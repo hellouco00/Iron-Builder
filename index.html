@@ -3875,13 +3875,19 @@ function openDayCelebrate(){
   try{
     if(window.__htBlockShareFromEvo){ console.log('[HT] share bloqueado (evolução/BF)'); return; }
     // Só abre se o dia (4 principais) estiver completo OU sessão de ranking autorizada
+    // Admin nunca
+    try{
+      var ad=document.getElementById('admin');
+      if(ad && (ad.classList.contains('active')||ad.classList.contains('editor-open'))) return;
+    }catch(e){}
+    var rankOk = !!(window.__htWeeklyShareActive || window.__htShareAllowed);
     var dayOk = false;
     try{
       if(typeof isDayMainDone==='function' && typeof currentDay!=='undefined') dayOk = !!isDayMainDone(currentDay);
     }catch(e){}
-    var rankOk = !!(window.__htWeeklyShareActive || window.__htShareAllowed);
-    if(!dayOk && !rankOk){
-      console.log('[HT] openDayCelebrate bloqueado — dia incompleto e ranking não autorizado');
+    // openDayCelebrate só com flag explícita OU dia completo (setado em completeCurrent)
+    if(!rankOk && !dayOk && !window.__htShareAllowed){
+      console.log('[HT] openDayCelebrate bloqueado');
       return;
     }
     window.__htShareAllowed = true;
@@ -4041,11 +4047,11 @@ function htClearShareCamPending(){
 function htEnsureDayCelebrateOpen(){
   try{
     // NÃO reabre compartilhamento a qualquer custo — só se já autorizado
-    var dayOk = false;
+    var allowed = !!(window.__htShareAllowed || window.__htWeeklyShareActive);
     try{
-      if(typeof isDayMainDone==='function' && typeof currentDay!=='undefined') dayOk = !!isDayMainDone(currentDay);
+      var ad=document.getElementById('admin');
+      if(ad && (ad.classList.contains('active')||ad.classList.contains('editor-open'))) allowed=false;
     }catch(e){}
-    var allowed = !!(window.__htShareAllowed || window.__htWeeklyShareActive || dayOk);
     if(!allowed || window.__htBlockShareFromEvo){
       // se não pode, garante fechado
       var dayX = document.getElementById('dayCelebrate');
@@ -9985,16 +9991,33 @@ function composeApply(target){
   window.htRequestPayment=function(){
     var e=email(), db=fb();
     if(!e){ show('authWelcome'); return; }
-    if(!db){ toast('Firebase não está conectado.'); return; }
+    if(!db){ toast('Firebase não está conectado. Verifique a internet.'); return; }
     var ok=document.getElementById('paymentRequestOk');
+    var plan='basico', planName='Básico', uname='';
+    try{
+      if(typeof htDesiredPlan==='function') plan=htDesiredPlan();
+      else if(typeof state!=='undefined' && state && state.plan) plan=state.plan.desired||state.plan.tier||'basico';
+      planName=({basico:'Básico',intermediario:'Intermediário',vip:'VIP'})[plan]||plan;
+      var u=(typeof currentUser==='function')?currentUser():null;
+      uname=(u && u.profile && u.profile.name) || (u && u.name) || '';
+    }catch(x){}
     db.collection('paymentRequests').doc(key(e)).set({
       email:e,
+      name:uname,
+      plan:plan,
+      planName:planName,
       status:'pending',
       requestedAt:now(),
       updatedAt:now()
     },{merge:true}).then(function(){
-      if(ok){ok.textContent='Pagamento informado. O Helton verá seu pedido e liberará o acesso após confirmar o pagamento.';ok.classList.add('show');}
-      toast('Pagamento informado ao administrador.');
+      // também grava no usuário
+      try{
+        db.collection('users').doc(key(e)).set({
+          email:e, paymentPending:true, requestedPlan:plan, lastPaymentRequestAt:now(), updatedAt:now()
+        },{merge:true});
+      }catch(x){}
+      if(ok){ok.textContent='Pagamento informado ('+planName+'). O Master/Admin verá no painel e liberará após confirmar.';ok.classList.add('show');}
+      toast('Aviso enviado ao Master/Admin ('+planName+').');
     }).catch(function(err){
       console.warn('[HT payment request]',err);
       if(ok){ok.textContent='Não foi possível enviar o aviso. Tente novamente.';ok.classList.add('show');}
@@ -10009,7 +10032,7 @@ function composeApply(target){
     var userRef=db.collection('users').doc(key(e));
     var reqRef=db.collection('paymentRequests').doc(key(e));
     Promise.all([
-      userRef.set({email:e,paidUntil:until,blocked:false,paymentConfirmed:true,lastPaymentAt:now(),updatedAt:now()},{merge:true}),
+      userRef.set({email:e,paidUntil:until,blocked:false,paymentConfirmed:true,paymentPending:false,lastPaymentAt:now(),updatedAt:now()},{merge:true}),
       reqRef.set({status:'approved',approvedAt:now(),paidUntil:until,updatedAt:now()},{merge:true})
     ]).then(function(){
       try{
@@ -10135,7 +10158,7 @@ function composeApply(target){
       list.sort(function(a,b){return Number(b.requestedAt||0)-Number(a.requestedAt||0);});
       box.innerHTML=list.map(function(r){
         var e=String(r.email||'').toLowerCase(), safe=e.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-        return '<div class="titanPending"><b>💳 '+e+'</b><small>Aluno informou pagamento em '+new Date(r.requestedAt||now()).toLocaleString('pt-BR')+'</small><div class="actions"><button class="approve" onclick="htApprovePayment(\''+safe+'\')">Liberar 30 dias</button><button class="reject" onclick="htRejectPayment(\''+safe+'\')">Recusar</button></div></div>';
+        return '<div class="titanPending"><b>💳 '+e+'</b><small>Plano: <b style="color:#ffbd3e">'+(r.planName||r.plan||'—')+'</b> · informou em '+new Date(r.requestedAt||now()).toLocaleString('pt-BR')+'</small><div class="actions"><button class="approve" onclick="htApprovePayment(\''+safe+'\')">Liberar 30 dias</button><button class="reject" onclick="htRejectPayment(\''+safe+'\')">Recusar</button></div></div>';
       }).join('');
     }catch(err){box.innerHTML='<p class="hint">Não foi possível carregar os pagamentos. Verifique as regras do Firestore.</p>';console.warn(err);}
   }
@@ -23561,7 +23584,7 @@ console.log("[HT] Catraca: onclick inline only (global capture disabled)");
 <div class="back" onclick="show('profile')">‹ Meu plano</div>
 <div class="sectionTitle">Planos Helton Training</div>
 <div class="htPlansGrid" id="htPlansGrid"></div>
-<div class="htLockNote">A liberação real do plano acontece após confirmação de pagamento pela equipe/academia. Esta tela permite testar/ajustar o nível de acesso.</div>
+<div class="htLockNote">Teste grátis: <b>10 dias</b> com o plano escolhido. Depois disso, mudar de plano <b>não libera</b> nada — só o Master (ou Admin) libera após o “Já paguei” e a confirmação do pagamento.</div>
 </section>
 
 <section class="screen" id="evolution">
@@ -23756,18 +23779,80 @@ var HT_PLANS = [
   {id:'intermediario', name:'Intermediário', features:['Tudo do Básico', 'Nutrição com montagem de dieta']},
   {id:'vip', name:'VIP', features:['Tudo do Intermediário', 'Aba de Evolução (exames + corpo + fotos)', 'Ranking com selo e Top 10']}
 ];
-function htGetPlan(){ htEnsureState(); return (state && state.plan && state.plan.tier) || 'basico'; }
-function htSetPlan(tier){ htEnsureState(); state.plan.tier=tier; save(); htRenderPlans(); }
+function htAccessSnapshot(){
+  try{
+    if(typeof isAdminSession==='function' && isAdminSession()) return {ok:true, reason:'admin', left:999};
+    var u = (typeof currentUser==='function') ? currentUser() : null;
+    if(typeof getAccessStatus==='function') return getAccessStatus(u) || {ok:false, reason:'none'};
+  }catch(e){}
+  return {ok:true, reason:'unknown'};
+}
+function htDesiredPlan(){
+  htEnsureState();
+  return (state && state.plan && (state.plan.desired || state.plan.tier)) || 'basico';
+}
+function htGetPlan(){
+  htEnsureState();
+  var desired = htDesiredPlan();
+  var st = htAccessSnapshot();
+  // Master/admin: vê o que escolheu
+  if(st.reason==='admin') return desired || 'vip';
+  // Em teste (10 dias) ou pago confirmado: plano escolhido vale
+  if(st.ok && (st.reason==='trial' || st.reason==='paid' || st.reason==='academy')) return desired;
+  // Expirado / bloqueado: NÃO libera recurso só por mudar o plano
+  return 'basico';
+}
+function htSetPlan(tier){
+  htEnsureState();
+  tier = String(tier||'basico');
+  state.plan = state.plan || {};
+  state.plan.desired = tier;
+  state.plan.tier = tier; // preferência do aluno
+  state.plan.requestedAt = Date.now();
+  try{ save(); }catch(e){}
+  htRenderPlans();
+  var st = htAccessSnapshot();
+  var nameMap={basico:'Básico',intermediario:'Intermediário',vip:'VIP'};
+  if(st && st.ok && st.reason==='trial'){
+    if(typeof toast==='function') toast('Plano '+ (nameMap[tier]||tier) +' no teste grátis ('+st.left+' dia(s)). Depois só o Master libera.');
+  } else if(st && st.ok && (st.reason==='paid'||st.reason==='academy')){
+    if(typeof toast==='function') toast('Plano '+ (nameMap[tier]||tier) +' selecionado.');
+  } else {
+    if(typeof toast==='function') toast('Plano escolhido. Após pagar, toque em “Já paguei” — o Master libera o acesso.');
+    try{
+      var note=document.getElementById('htPlanPayHint');
+      if(note) note.style.display='block';
+    }catch(e){}
+  }
+}
 function htHasNutrition(){ var t=htGetPlan(); return t==='intermediario'||t==='vip'; }
 function htHasVip(){ return htGetPlan()==='vip'; }
 function htRenderPlans(){
   var box=document.getElementById('htPlansGrid'); if(!box) return;
-  var current=htGetPlan();
-  box.innerHTML = HT_PLANS.map(function(p){
-    var isCur = p.id===current;
-    return '<div class="htPlanCard'+(isCur?' active':'')+'"><h3>'+p.name+'</h3><ul>'+p.features.map(function(f){return '<li>'+f+'</li>'}).join('')+'</ul><button class="htPlanBtn'+(isCur?' current':'')+'" onclick="htSetPlan(\''+p.id+'\')">'+(isCur?'Plano atual':'Escolher '+p.name)+'</button></div>';
-  }).join('');
+  var desired=htDesiredPlan();
+  var active=htGetPlan();
+  var st=htAccessSnapshot();
+  var statusLine='';
+  if(st.reason==='trial') statusLine='🎁 Teste grátis: '+st.left+' dia(s). Recursos do plano escolhido liberados só neste período.';
+  else if(st.reason==='paid') statusLine='✅ Acesso pago ativo'+(st.left!=null?(' · '+st.left+' dia(s)'):'')+'.';
+  else if(st.reason==='admin') statusLine='🛡️ Sessão Master/Admin.';
+  else statusLine='🔒 Teste encerrado. Escolher plano NÃO libera acesso — pague e toque em “Já paguei”. O Master confirma.';
+  box.innerHTML =
+    '<div style="grid-column:1/-1;margin:0 0 10px;padding:12px;border-radius:14px;background:#0b1525;border:1px solid #315075;font-size:12px;line-height:1.45;color:#c5d3e3">'+statusLine+'</div>'+
+    HT_PLANS.map(function(p){
+      var isDesired = p.id===desired;
+      var isActive = p.id===active && st.ok;
+      var label = isActive ? 'Plano em uso' : (isDesired ? 'Selecionado' : ('Escolher '+p.name));
+      return '<div class="htPlanCard'+(isDesired?' active':'')+'"><h3>'+p.name+(isActive?' ✓':'')+'</h3><ul>'+p.features.map(function(f){return '<li>'+f+'</li>'}).join('')+'</ul><button class="htPlanBtn'+(isDesired?' current':'')+'" onclick="htSetPlan(\''+p.id+'\')">'+label+'</button></div>';
+    }).join('')+
+    '<div id="htPlanPayHint" style="grid-column:1/-1;display:'+(st.ok?'none':'block')+';margin-top:6px;padding:14px;border-radius:14px;background:#1a1408;border:1px solid #6d5010">'+
+      '<b style="color:#ffbd3e">Como liberar depois dos 10 dias</b>'+
+      '<p style="font-size:12px;color:#c5d3e3;line-height:1.45;margin:8px 0">1) Escolha o plano · 2) Pague pelo link · 3) Toque em <b>Já paguei</b> · 4) O Master (ou Admin) confirma no painel e libera.</p>'+
+      '<button type="button" class="authBtn green" style="width:100%" onclick="try{htRequestPayment()}catch(e){alert(e)}">✅ Já paguei — avisar o Master</button>'+
+      '<button type="button" class="authBtn ghost" style="width:100%;margin-top:8px" onclick="show(\'paywall\')">Ir para tela de pagamento</button>'+
+    '</div>';
 }
+
 function htShowUpgrade(title,text){
   document.getElementById('htUpgradeTitle').textContent=title;
   document.getElementById('htUpgradeText').textContent=text;
@@ -24113,15 +24198,42 @@ function htRenderPhotoScreen(){
     captureBox.style.display='none';
   } else if(locked){
     var d=new Date(state.photos.nextAllowed);
-    status.textContent='Próximo ciclo libera em '+d.toLocaleDateString('pt-BR')+'. A frequência só pode ser trocada depois disso.';
+    status.textContent='Próximo ciclo libera em '+d.toLocaleDateString('pt-BR')+'. Suas fotos ficam salvas no comparativo abaixo.';
     captureBox.style.display='none';
   } else {
     status.textContent='Ciclo atual: '+({weekly:'semanal',biweekly:'quinzenal',monthly:'mensal'}[state.photos.frequency])+'. Tire as duas fotos abaixo para fechar o ciclo.';
     captureBox.style.display='block';
   }
   var draft=(state.photos&&state.photos.draft)||{};
+  // Se não há rascunho, mostra última salva nos previews quando NÃO está no modo captura
+  var last=state.photos.lastSaved||null;
+  if(!last && state.photos.history && state.photos.history.length){
+    var h=state.photos.history[state.photos.history.length-1];
+    last={front:h.front,side:h.side,date:h.date};
+  }
   htTempPhotos={front:draft.front||null,side:draft.side||null};
   var fp=document.getElementById('htFrontPreview'), sp=document.getElementById('htSidePreview'), sb=document.getElementById('htSavePhotosBtn');
+  // Quadro de últimas fotos salvas (sempre visível se existir)
+  var savedBox=document.getElementById('htLastSavedPhotos');
+  if(!savedBox){
+    savedBox=document.createElement('div');
+    savedBox.id='htLastSavedPhotos';
+    savedBox.style.cssText='margin:10px 0 12px;padding:12px;border-radius:14px;background:#081321;border:1px solid #29405d';
+    if(status && status.parentNode) status.parentNode.insertBefore(savedBox, status.nextSibling);
+  }
+  if(last && (last.front||last.side)){
+    savedBox.style.display='block';
+    savedBox.innerHTML=
+      '<b style="display:block;font-size:13px;margin-bottom:8px;color:#ffbd3e">📸 Últimas fotos salvas</b>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
+        '<div style="text-align:center">'+(last.front?('<img src="'+last.front+'" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px;border:1px solid #315075">'):'')+'<small style="font-size:10px;color:#8ea0b8">Frente</small></div>'+
+        '<div style="text-align:center">'+(last.side?('<img src="'+last.side+'" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px;border:1px solid #315075">'):'')+'<small style="font-size:10px;color:#8ea0b8">Lado</small></div>'+
+      '</div>'+
+      '<small style="display:block;margin-top:8px;color:#9fb0c5;font-size:10px">Registradas em '+(last.date?new Date(last.date).toLocaleDateString('pt-BR'):'—')+(locked?(' · próximo ciclo em '+new Date(state.photos.nextAllowed).toLocaleDateString('pt-BR')):'')+'</small>';
+  } else {
+    savedBox.style.display='none';
+    savedBox.innerHTML='';
+  }
   if(fp){
     if(htTempPhotos.front){ fp.src=htTempPhotos.front; fp.style.display='block'; }
     else { try{fp.removeAttribute('src');}catch(e){} fp.style.display='none'; }
@@ -24145,34 +24257,62 @@ function htHandlePhoto(which, input){
   };
   reader.readAsDataURL(file);
 }
+function htCompressPhotoDataUrl(dataUrl, maxSide, quality, cb){
+  try{
+    if(!dataUrl || String(dataUrl).indexOf('data:')!==0){ cb(dataUrl); return; }
+    var img=new Image();
+    img.onload=function(){
+      try{
+        var w=img.naturalWidth||img.width||1, h=img.naturalHeight||img.height||1;
+        var sc=Math.min(1, (maxSide||900)/Math.max(w,h));
+        var c=document.createElement('canvas');
+        c.width=Math.max(1,Math.round(w*sc));
+        c.height=Math.max(1,Math.round(h*sc));
+        c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+        cb(c.toDataURL('image/jpeg', quality!=null?quality:0.72));
+      }catch(e){ cb(dataUrl); }
+    };
+    img.onerror=function(){ cb(dataUrl); };
+    img.src=dataUrl;
+  }catch(e){ cb(dataUrl); }
+}
 function htSavePhotoCycle(){
+  if(!htTempPhotos.front || !htTempPhotos.side){ if(typeof toast==='function') toast('Tire as duas fotos (frente e lado).'); return; }
   htEnsureState();
   var m=(state.evolution&&state.evolution.measures)||{};
   var p=state.profile||{};
-  var entry = {
-    date:Date.now(),
-    front:htTempPhotos.front,
-    side:htTempPhotos.side,
-    weight:p.weight!=null?Number(p.weight):null,
-    height:p.height!=null?Number(p.height):null,
-    age:p.age!=null?Number(p.age):null,
-    gender:p.gender||null,
-    waist:m.waist!=null?Number(m.waist):null,
-    neck:m.neck!=null?Number(m.neck):null,
-    hip:m.hip!=null?Number(m.hip):null,
-    chest:m.chest!=null?Number(m.chest):null,
-    shoulders:m.shoulders!=null?Number(m.shoulders):(m.ombro!=null?Number(m.ombro):null),
-    arm:m.arm!=null?Number(m.arm):(m.braco!=null?Number(m.braco):null),
-    bodyFat:(state.evolution&&state.evolution.bodyFat)!=null?Number(state.evolution.bodyFat):null
-  };
-  state.photos.history=state.photos.history||[];
-  state.photos.history.push(entry);
-  state.photos.draft={};
-  var days2 = HT_FREQ_DAYS[state.photos.frequency]||7;
-  state.photos.nextAllowed = Date.now() + days2*24*60*60*1000;
-  save();
-  if(typeof toast==='function') toast('Fotos do ciclo salvas! Próximo ciclo em '+days2+' dias.');
-  htRenderPhotoScreen();
+  // Comprime para caber no storage e continuar aparecendo
+  htCompressPhotoDataUrl(htTempPhotos.front, 900, 0.72, function(frontSmall){
+    htCompressPhotoDataUrl(htTempPhotos.side, 900, 0.72, function(sideSmall){
+      var entry = {
+        date:Date.now(),
+        front:frontSmall,
+        side:sideSmall,
+        weight:p.weight!=null?Number(p.weight):null,
+        height:p.height!=null?Number(p.height):null,
+        age:p.age!=null?Number(p.age):null,
+        gender:p.gender||null,
+        waist:m.waist!=null?Number(m.waist):null,
+        neck:m.neck!=null?Number(m.neck):null,
+        hip:m.hip!=null?Number(m.hip):null,
+        chest:m.chest!=null?Number(m.chest):null,
+        shoulders:m.shoulders!=null?Number(m.shoulders):(m.ombro!=null?Number(m.ombro):null),
+        arm:m.arm!=null?Number(m.arm):(m.braco!=null?Number(m.braco):null),
+        bodyFat:(state.evolution&&state.evolution.bodyFat)!=null?Number(state.evolution.bodyFat):null
+      };
+      state.photos.history=state.photos.history||[];
+      state.photos.history.push(entry);
+      // guarda também "lastSaved" para sempre exibir no quadro
+      state.photos.lastSaved={front:frontSmall, side:sideSmall, date:entry.date};
+      state.photos.draft={};
+      var days2 = HT_FREQ_DAYS[state.photos.frequency]||7;
+      state.photos.nextAllowed = Date.now() + days2*24*60*60*1000;
+      try{ save(); }catch(e){ console.warn(e); }
+      if(typeof toast==='function') toast('Fotos salvas! Elas ficam no comparativo. Próximo ciclo em '+days2+' dias.');
+      htTempPhotos={front:null,side:null};
+      htRenderPhotoScreen();
+    });
+  });
 }
 function htRenderPhotoCompare(){
   htEnsureState();
@@ -24186,19 +24326,29 @@ function htRenderPhotoCompare(){
     return;
   }
   var last=hist[hist.length-1];
+  var first=hist[0];
   var prev=hist.length>1?hist[hist.length-2]:null;
+  // Compara PRIMEIRO ciclo com o ÚLTIMO (evolução real do corpo)
+  var base = hist.length>1 ? first : null;
   function card(entry, label){
     if(!entry) return '<div><small style="padding:16px;display:block;color:#8ea0b8">Sem foto anterior</small></div>';
-    var img = entry.front || entry.side || '';
-    return '<div style="background:#081321;border:1px solid #29405d;border-radius:14px;overflow:hidden">'+
-      (img?'<img src="'+img+'" style="width:100%;aspect-ratio:3/4;object-fit:cover;display:block">':'')+
-      '<small style="display:block;padding:8px;color:#c5d3e3;font-size:10px">'+label+' — '+new Date(entry.date).toLocaleDateString('pt-BR')+'</small></div>';
+    var front = entry.front || '';
+    var side = entry.side || '';
+    return '<div style="background:#081321;border:1px solid #29405d;border-radius:14px;overflow:hidden;padding:0 0 8px">'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">'+
+        (front?'<img src="'+front+'" style="width:100%;aspect-ratio:3/4;object-fit:cover;display:block">':'<div style="aspect-ratio:3/4;background:#0b1525"></div>')+
+        (side?'<img src="'+side+'" style="width:100%;aspect-ratio:3/4;object-fit:cover;display:block">':'<div style="aspect-ratio:3/4;background:#0b1525"></div>')+
+      '</div>'+
+      '<small style="display:block;padding:8px 8px 0;color:#c5d3e3;font-size:10px;font-weight:800">'+label+'</small>'+
+      '<small style="display:block;padding:2px 8px 0;color:#8ea0b8;font-size:9px">'+new Date(entry.date).toLocaleDateString('pt-BR')+' · frente e lado</small></div>';
   }
-  grid.innerHTML = card(prev,'Ciclo anterior') + card(last,'Atual');
-  if(!prev){
-    textBox.innerHTML='<b style="color:#ffbd3e">Primeiro ciclo registrado.</b> No próximo ciclo (conforme a frequência) você compara fotos e medidas e vê a análise da evolução.';
+  grid.innerHTML = card(base||prev,'Primeiro registro') + card(last,'Registro atual');
+  if(!base && !prev){
+    textBox.innerHTML='<b style="color:#ffbd3e">Primeiro ciclo registrado com sucesso.</b> Suas fotos ficaram salvas. No próximo ciclo o app compara com estas fotos e mostra o que mudou no seu corpo.';
     return;
   }
+  // usa primeiro vs último para análise
+  prev = base || prev;
   var days = Math.max(1, Math.round((last.date-prev.date)/(24*60*60*1000)));
   var insights=[];
   function delta(a,b,unit,label){
@@ -25240,7 +25390,7 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
       '<p style="font-size:11px;color:#9fb0c5;margin:0 0 10px;line-height:1.4">Preencha os campos e toque em <b>Calcular BF</b>. Com cintura e pescoço o cálculo usa o método US Navy (mais preciso). Sem medidas, usa estimativa por IMC.</p>'+
       '<div class="htEvoGrid" style="margin-bottom:8px">'+
         '<input id="htBfAge" type="text" inputmode="decimal" placeholder="Idade (anos)">'+
-        '<input id="htBfHeight" type="text" inputmode="decimal" placeholder="Altura (ex: 1.72 ou 172)">'+
+        '<input id="htBfHeight" type="text" inputmode="decimal" autocomplete="off" placeholder="Altura: 1.72 ou 172">'+
         '<input id="htBfWeight" type="text" inputmode="decimal" placeholder="Peso (kg)">'+
         '<select id="htBfGender" style="width:100%;padding:12px;background:#050c16;border:1px solid #30415d;color:#fff;border-radius:12px">'+
           '<option value="masculino">Masculino</option>'+
@@ -25270,6 +25420,7 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
       var el=document.getElementById(id);
       if(!el || el._htBfKey) return;
       el._htBfKey=true;
+      try{ el.removeAttribute('readonly'); el.removeAttribute('min'); el.removeAttribute('max'); el.removeAttribute('step'); el.type='text'; el.setAttribute('inputmode','decimal'); }catch(e){}
       el.addEventListener('keydown', function(ev){
         if(ev.key==='Enter' || ev.keyCode===13){
           ev.preventDefault();
@@ -25277,6 +25428,13 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
           try{ runBfCalc(); }catch(e){}
           return false;
         }
+      });
+      // Permite digitar ponto e vírgula livremente
+      el.addEventListener('input', function(){
+        var v = String(el.value || '');
+        // não bloquear ponto enquanto digita
+        var cleaned = v.replace(/[^0-9.,]/g,'');
+        if(cleaned !== v) el.value = cleaned;
       });
     });
 
@@ -25308,16 +25466,24 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
   function num(id){
     var el=document.getElementById(id);
     if(!el) return 0;
-    var raw = String(el.value || '').trim().replace(',', '.');
-    if(!raw) return 0;
+    var raw = String(el.value || '').trim();
+    // aceita vírgula ou ponto
+    raw = raw.replace(/\s/g,'').replace(',', '.');
+    // remove tudo que não for dígito/ponto
+    raw = raw.replace(/[^0-9.]/g,'');
+    // só um ponto
+    var parts = raw.split('.');
+    if(parts.length > 2) raw = parts[0] + '.' + parts.slice(1).join('');
+    if(!raw || raw==='.') return 0;
     var n = parseFloat(raw);
     return isFinite(n) ? n : 0;
   }
 
   function heightCm(idPrimary, idFallback){
-    var h = num(idPrimary) || num(idFallback) || 0;
-    // Aceita 1.72 (metros) ou 172 (cm)
-    if(h > 0 && h < 3) h = h * 100;
+    var h = num(idPrimary);
+    if(!h) h = num(idFallback) || 0;
+    // 1.72 / 1,72 = metros → cm ; 172 = já cm
+    if(h > 0 && h <= 2.5) h = Math.round(h * 1000) / 10; // 1.72 → 172
     return h;
   }
 
@@ -27230,9 +27396,19 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
   }
   function allowed(){
     if(window.__htBlockShareFromEvo) return false;
+    // Admin / Master / edição de moldura: NUNCA compartilhamento
+    try{
+      var ad = document.getElementById('admin');
+      if(ad && ad.classList.contains('active')) return false;
+      if(ad && ad.classList.contains('editor-open')) return false;
+      if(document.getElementById('htV36Studio') && document.getElementById('admin') && document.getElementById('admin').classList.contains('active')) return false;
+      var auth = document.getElementById('authAdminLogin');
+      if(auth && auth.classList.contains('active')) return false;
+    }catch(e){}
+    // Só flags explícitas — NÃO abrir só porque o dia está completo
     if(window.__htShareAllowed) return true;
     if(window.__htWeeklyShareActive) return true;
-    return dayMainDone();
+    return false;
   }
   function closeShare(force){
     try{
@@ -27309,6 +27485,58 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
     }catch(e){}
   }, 1200);
   try{ console.log('[HT ShareGate] ativo — só 4 exercícios ou ranking'); }catch(e){}
+})();
+</script>
+
+
+<script id="htNeverShareOnAdmin">
+(function(){
+  function closeShareHard(){
+    try{
+      window.__htShareAllowed = false;
+      window.__htWeeklyShareActive = false;
+      var day = document.getElementById('dayCelebrate');
+      if(day){
+        day.classList.remove('show');
+        day.style.display = 'none';
+        day.style.pointerEvents = 'none';
+        day.style.visibility = 'hidden';
+      }
+    }catch(e){}
+  }
+  function isAdminView(){
+    try{
+      var ad = document.getElementById('admin');
+      if(ad && ad.classList.contains('active')) return true;
+      if(ad && ad.classList.contains('editor-open')) return true;
+    }catch(e){}
+    return false;
+  }
+  setInterval(function(){
+    if(isAdminView()) closeShareHard();
+  }, 600);
+  // Patch adminShowPanel
+  function patch(){
+    if(typeof window.adminShowPanel === 'function' && !window.adminShowPanel.__htNoShare){
+      var prev = window.adminShowPanel;
+      window.adminShowPanel = function(){
+        closeShareHard();
+        return prev.apply(this, arguments);
+      };
+      window.adminShowPanel.__htNoShare = true;
+    }
+    if(typeof window.buildStudio === 'function' && !window.buildStudio.__htNoShare){
+      var prevB = window.buildStudio;
+      window.buildStudio = function(){
+        closeShareHard();
+        return prevB.apply(this, arguments);
+      };
+      window.buildStudio.__htNoShare = true;
+    }
+  }
+  patch();
+  setInterval(patch, 1500);
+  try{ console.log('[HT] Never share on admin/master'); }catch(e){}
 })();
 </script>
 
