@@ -3712,6 +3712,63 @@ let sharePhotoDataUrl=null;
 let sharePhotoImg=null;
 let lastDayStats={exercises:0,min:0,kcal:0,dayName:''};
 
+
+/* ===== HT FIX: assets + furar moldura (V46.3) ===== */
+function htAssetUrl(path){
+  if(!path) return '';
+  path = String(path);
+  if(/^data:|^blob:|^https?:\/\//i.test(path)) return path;
+  try{
+    var base = (document.querySelector('base') && document.querySelector('base').href) || location.href;
+    return new URL(path, base).href;
+  }catch(e){ return path; }
+}
+function htToDataUrl(src, cb){
+  if(!src){ try{cb(null);}catch(e){} return; }
+  src = String(src);
+  if(/^data:/i.test(src)){ try{cb(src);}catch(e){} return; }
+  // Prefer fetch (same-origin assets) to avoid tainted canvas
+  if(typeof fetch === 'function'){
+    fetch(src, {mode:'cors', credentials:'same-origin', cache:'force-cache'}).then(function(r){
+      if(!r.ok) throw new Error('http '+r.status);
+      return r.blob();
+    }).then(function(blob){
+      var fr = new FileReader();
+      fr.onload = function(){ cb(fr.result); };
+      fr.onerror = function(){ cb(null); };
+      fr.readAsDataURL(blob);
+    }).catch(function(){
+      var img = new Image();
+      try{ img.crossOrigin = 'anonymous'; }catch(e){}
+      img.onload = function(){
+        try{
+          var c = document.createElement('canvas');
+          c.width = img.naturalWidth || img.width || 1;
+          c.height = img.naturalHeight || img.height || 1;
+          c.getContext('2d').drawImage(img,0,0);
+          cb(c.toDataURL('image/png'));
+        }catch(err){ cb(null); }
+      };
+      img.onerror = function(){ cb(null); };
+      img.src = src;
+    });
+    return;
+  }
+  var img2 = new Image();
+  try{ img2.crossOrigin = 'anonymous'; }catch(e){}
+  img2.onload = function(){
+    try{
+      var c = document.createElement('canvas');
+      c.width = img2.naturalWidth || 1;
+      c.height = img2.naturalHeight || 1;
+      c.getContext('2d').drawImage(img2,0,0);
+      cb(c.toDataURL('image/png'));
+    }catch(err){ cb(null); }
+  };
+  img2.onerror = function(){ cb(null); };
+  img2.src = src;
+}
+
 const FRAME_ASSETS={"solo":[{"id":"solo_1","name":"Disciplina • Foco • Resultados","asset":"assets/img070.png","w":1080,"h":1440,"window":{"left":16.4815,"right":13.2407,"top":43.1250,"bottom":6.8056,"shape":"circle"},"stamp":"DISCIPLINA FOCO RESULTADOS"},{"id":"solo_2","name":"Treino Hoje • Colha Amanhã","asset":"assets/img071.png","w":1080,"h":1440,"window":{"left":16.3889,"right":13.7037,"top":43.1250,"bottom":6.8056,"shape":"circle"},"stamp":"TREINO HOJE COLHA AMANHÃ"},{"id":"solo_3","name":"Mente Forte • Corpo Forte","asset":"assets/img072.png","w":1080,"h":1440,"window":{"left":18.0556,"right":14.8148,"top":42.7778,"bottom":7.5000,"shape":"circle"},"stamp":"MENTE FORTE CORPO FORTE"},{"id":"solo_4","name":"Superando Meus Limites","asset":"assets/img073.png","w":1080,"h":1440,"window":{"left":18.0556,"right":16.5741,"top":42.4306,"bottom":7.5000,"shape":"circle"},"stamp":"SUPERANDO MEUS LIMITES"},{"id":"solo_magazine","name":"Capa de Revista • Fitness","asset":"assets/img074.png","w":1080,"h":1440,"window":{"left":7.4074,"right":21.2037,"top":23.9583,"bottom":13.4722,"shape":"rect"},"stamp":"CAPA DE REVISTA"},{"id":"solo_neon","name":"Fitness Neon • Treino Concluído","asset":"assets/img075.png","w":1080,"h":1440,"window":{"left":8.3333,"right":8.2407,"top":19.7917,"bottom":14.8611,"shape":"circle"},"stamp":"FITNESS NEON"}],"casal":[{"id":"casal_1","name":"Casal que Anda Junto • Cresce Junto","asset":"assets/img076.png","w":1080,"h":1440,"window":{"left":11.5741,"right":11.1111,"top":32.1528,"bottom":14.0278,"shape":"rect"},"stamp":"CASAL QUE ANDA JUNTO CRESCE JUNTO"},{"id":"casal_2","name":"Juntos Somos Mais Fortes","asset":"assets/img077.png","w":1080,"h":1440,"window":{"left":11.6667,"right":6.8519,"top":32.1528,"bottom":14.0278,"shape":"rect"},"stamp":"JUNTOS SOMOS MAIS FORTES"},{"id":"casal_3","name":"Parceiros no Treino • Parceiros na Vida","asset":"assets/img078.png","w":1080,"h":1440,"window":{"left":12.1296,"right":7.3148,"top":32.1528,"bottom":14.0278,"shape":"rect"},"stamp":"PARCEIROS NO TREINO PARCEIROS NA VIDA"},{"id":"casal_4","name":"Amor & Disciplina • Essa é Nossa Fórmula","asset":"assets/img079.png","w":1080,"h":1440,"window":{"left":12.6852,"right":6.8519,"top":32.1528,"bottom":14.0278,"shape":"rect"},"stamp":"AMOR E DISCIPLINA ESSA E NOSSA FORMULA"},{"id":"casal_5","name":"Juntos por um Objetivo • Vida Melhor","asset":"assets/img080.png","w":1080,"h":1440,"window":{"left":11.3889,"right":8.7963,"top":32.1528,"bottom":14.0278,"shape":"rect"},"stamp":"JUNTOS POR UM OBJETIVO VIDA MELHOR"}]};
 
 // Novas molduras extras — somente informações do próprio treino, sem academia, telefone, ID ou nomes de terceiros.
@@ -3739,9 +3796,21 @@ function photoWindow(){return getFrame().window}
 function setFrameMode(mode){mode=String(mode||'solo');if(mode==='casal'||mode==='grupo')frameMode=mode;else frameMode='solo';document.getElementById('tabSolo')?.classList.toggle('active',frameMode==='solo');document.getElementById('tabCasal')?.classList.toggle('active',frameMode==='casal');document.getElementById('tabGrupo')?.classList.toggle('active',frameMode==='grupo');document.getElementById('tabRandom')?.classList.remove('active');var list=getFrameList();currentFrameId=(list[0]&&list[0].id)||'solo_1';renderFrameStrip();pickPraise();applyFrameGeometry();updateFrameArt();photoX=0;photoY=0;updatePhotoTransform();if(sharePhotoDataUrl)requestAnimationFrame(centerPhotoInWindow)}
 function randomFrame(){setFrameMode('grupo')}
 function selectFrame(id){currentFrameId=id;renderFrameStrip();pickPraise();applyFrameGeometry();updateFrameArt();photoX=0;photoY=0;updatePhotoTransform();if(sharePhotoDataUrl)requestAnimationFrame(centerPhotoInWindow)}
-function renderFrameStrip(){const strip=document.getElementById('frameStrip');if(!strip)return;strip.innerHTML=getFrameList().map(f=>`<button type="button" class="frameChip ${f.id===currentFrameId?'active':''}" onclick="selectFrame('${f.id}')"><img src="${f.asset}" alt=""><span>${f.name}</span></button>`).join('');const lab=document.getElementById('frameNameLabel');if(lab)lab.textContent=getFrame().name}
+function renderFrameStrip(){const strip=document.getElementById('frameStrip');if(!strip)return;strip.innerHTML=getFrameList().map(f=>{const src=(typeof htAssetUrl==='function'?htAssetUrl(f.asset):f.asset)||'';return `<button type="button" class="frameChip ${f.id===currentFrameId?'active':''}" onclick="selectFrame('${f.id}')"><img src="${src}" alt="" onerror="this.style.opacity=.3"><span>${f.name}</span></button>`;}).join('');const lab=document.getElementById('frameNameLabel');if(lab)lab.textContent=getFrame().name}
 function pickPraise(){var arr=DAY_PRAISES_SOLO;if(frameMode==='casal')arr=DAY_PRAISES_CASAL;else if(frameMode==='grupo'&&typeof DAY_PRAISES_GRUPO!=='undefined')arr=DAY_PRAISES_GRUPO;const txt=arr[Math.floor(Math.random()*arr.length)];const el=document.getElementById('dayPraise');if(el)el.textContent=txt;const el2=document.getElementById('shareAchievementPraise');if(el2)el2.textContent=txt}
-function updateFrameArt(){const art=document.getElementById('shareFrameArt');if(art)art.src=getFrame().asset}
+function updateFrameArt(){
+  const art=document.getElementById('shareFrameArt');
+  if(!art) return;
+  const f=getFrame();
+  const src=typeof htAssetUrl==='function'?htAssetUrl(f.asset):f.asset;
+  if(!src){ art.removeAttribute('src'); return; }
+  art.onerror=function(){
+    console.warn('[shareFrameArt] falha ao carregar', src);
+    // tenta caminho relativo puro se URL absoluta falhou
+    if(f.asset && art.src!==f.asset){ art.src=f.asset; }
+  };
+  art.src=src;
+}
 function applyFrameGeometry(){
   const stage=document.getElementById('shareCanvasWrap'),viewport=document.getElementById('shareFrameViewport'),layer=document.getElementById('sharePhotoLayer'),ph=document.getElementById('sharePlaceholder');
   const f=getFrame(),w=f.window||{};
@@ -12156,44 +12225,66 @@ var FS = {
 function pct(n){ return Math.round(Number(n)*10)/10; }
 
 function punchHole(dataUrl, done){
-  // Torna transparente a área do recorte na imagem da moldura
-  try{
-    var img = new Image();
-    img.onload = function(){
-      var w = img.naturalWidth, h = img.naturalHeight;
-      var canvas = document.createElement('canvas');
-      canvas.width = w; canvas.height = h;
-      var ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0);
-      var x = (FS.L/100)*w;
-      var y = (FS.T/100)*h;
-      var rw = ((100-FS.L-FS.R)/100)*w;
-      var rh = ((100-FS.T-FS.B)/100)*h;
-      ctx.save();
-      ctx.globalCompositeOperation = 'destination-out';
-      if(FS.shape === 'circle'){
-        ctx.beginPath();
-        ctx.ellipse(x+rw/2, y+rh/2, rw/2, rh/2, 0, 0, Math.PI*2);
-        ctx.fill();
-      } else {
-        var rad = Math.min(rw, rh)*0.04;
-        ctx.beginPath();
-        // rounded rect
-        var r = rad;
-        ctx.moveTo(x+r,y);
-        ctx.arcTo(x+rw,y,x+rw,y+rh,r);
-        ctx.arcTo(x+rw,y+rh,x,y+rh,r);
-        ctx.arcTo(x,y+rh,x,y,r);
-        ctx.arcTo(x,y,x+rw,y,r);
-        ctx.closePath();
-        ctx.fill();
-      }
-      ctx.restore();
-      done(canvas.toDataURL('image/png'));
-    };
-    img.onerror = function(){ done(dataUrl); };
-    img.src = dataUrl;
-  }catch(e){ done(dataUrl); }
+  // Torna transparente a área do recorte na imagem da moldura (robusto: dataURL/fetch)
+  function runOnData(src){
+    try{
+      var img = new Image();
+      img.onload = function(){
+        try{
+          var w = img.naturalWidth || img.width || 1;
+          var h = img.naturalHeight || img.height || 1;
+          if(w < 2 || h < 2){ done(src); return; }
+          var canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          var ctx = canvas.getContext('2d', {willReadFrequently:true});
+          ctx.drawImage(img, 0, 0);
+          var L = (typeof FS!=='undefined' && FS.L!=null) ? FS.L : 12;
+          var R = (typeof FS!=='undefined' && FS.R!=null) ? FS.R : 12;
+          var T = (typeof FS!=='undefined' && FS.T!=null) ? FS.T : 20;
+          var B = (typeof FS!=='undefined' && FS.B!=null) ? FS.B : 28;
+          var shape = (typeof FS!=='undefined' && FS.shape) ? FS.shape : 'circle';
+          var x = (L/100)*w;
+          var y = (T/100)*h;
+          var rw = ((100-L-R)/100)*w;
+          var rh = ((100-T-B)/100)*h;
+          if(rw < 4) rw = w*0.5;
+          if(rh < 4) rh = h*0.4;
+          ctx.save();
+          ctx.globalCompositeOperation = 'destination-out';
+          if(shape === 'circle'){
+            ctx.beginPath();
+            ctx.ellipse(x+rw/2, y+rh/2, Math.max(2,rw/2), Math.max(2,rh/2), 0, 0, Math.PI*2);
+            ctx.fill();
+          } else {
+            var rad = Math.min(rw, rh)*0.04;
+            var r = rad;
+            ctx.beginPath();
+            ctx.moveTo(x+r,y);
+            ctx.arcTo(x+rw,y,x+rw,y+rh,r);
+            ctx.arcTo(x+rw,y+rh,x,y+rh,r);
+            ctx.arcTo(x,y+rh,x,y,r);
+            ctx.arcTo(x,y,x+rw,y,r);
+            ctx.closePath();
+            ctx.fill();
+          }
+          ctx.restore();
+          var out;
+          try{ out = canvas.toDataURL('image/png'); }
+          catch(sec){ console.warn('[punchHole] toDataURL', sec); out = src; }
+          done(out);
+        }catch(err){ console.warn(err); done(src); }
+      };
+      img.onerror = function(){ done(dataUrl); };
+      img.src = src;
+    }catch(e){ done(dataUrl); }
+  }
+  if(!dataUrl){ done(dataUrl); return; }
+  if(String(dataUrl).indexOf('data:')===0){ runOnData(dataUrl); return; }
+  if(typeof htToDataUrl==='function'){
+    htToDataUrl(dataUrl, function(d){ runOnData(d || dataUrl); });
+  } else {
+    runOnData(dataUrl);
+  }
 }
 
 function buildStudio(){
@@ -12509,41 +12600,81 @@ function resetEditor(){
 
 function punchPreview(){
   var art=document.getElementById('v36Art');
-  if(!art||!art.src){ toastSafe('Carregue ou edite uma moldura primeiro'); return; }
+  if(!art||(!art.src && !(FS&& (FS.assetWork||FS.assetOrig||FS.asset)))){
+    toastSafe('Carregue ou edite uma moldura primeiro'); return;
+  }
   toastSafe('Furando área do recorte…');
-  var img=new Image();
-  img.onload=function(){
-    var w=img.naturalWidth||1080, h=img.naturalHeight||1440;
-    var canvas=document.createElement('canvas');
-    canvas.width=w; canvas.height=h;
-    var ctx=canvas.getContext('2d');
-    ctx.drawImage(img,0,0,w,h);
-    // also bake current paint layer
-    var paint=document.getElementById('v36Paint');
-    if(paint&&paint.width){ try{ ctx.drawImage(paint,0,0,w,h); }catch(e){} }
-    var x=(FS.L/100)*w, y=(FS.T/100)*h;
-    var rw=((100-FS.L-FS.R)/100)*w, rh=((100-FS.T-FS.B)/100)*h;
-    ctx.save();
-    ctx.translate(x+rw/2, y+rh/2);
-    ctx.rotate((FS.holeRot||0)*Math.PI/180);
-    ctx.globalCompositeOperation='destination-out';
-    if(FS.shape==='circle'){
-      ctx.beginPath();
-      ctx.ellipse(0,0,rw/2,rh/2,0,0,Math.PI*2);
-      ctx.fill();
-    } else {
-      ctx.fillRect(-rw/2,-rh/2,rw,rh);
-    }
-    ctx.restore();
-    var out=canvas.toDataURL('image/png');
-    art.src=out;
-    FS.assetOrig=out;
-    FS.assetWork=out;
-    clearPaint();
-    toastSafe('Furo feito · área transparente no recorte');
-  };
-  img.onerror=function(){ toastSafe('Erro ao furar a arte'); };
-  img.src=art.src;
+  var src = (FS && (FS.assetWork || FS.assetOrig || FS.asset)) || art.src;
+  function finishWith(srcData){
+    var img=new Image();
+    img.onload=function(){
+      try{
+        var w=img.naturalWidth||1080, h=img.naturalHeight||1440;
+        if(w<2||h<2){ toastSafe('Imagem da moldura inválida'); return; }
+        var canvas=document.createElement('canvas');
+        canvas.width=w; canvas.height=h;
+        var ctx=canvas.getContext('2d', {willReadFrequently:true});
+        ctx.drawImage(img,0,0,w,h);
+        var paint=document.getElementById('v36Paint');
+        if(paint&&paint.width){ try{ ctx.drawImage(paint,0,0,w,h); }catch(e){} }
+        var x=(FS.L/100)*w, y=(FS.T/100)*h;
+        var rw=((100-FS.L-FS.R)/100)*w, rh=((100-FS.T-FS.B)/100)*h;
+        if(rw<4) rw=w*0.5; if(rh<4) rh=h*0.4;
+        ctx.save();
+        ctx.translate(x+rw/2, y+rh/2);
+        ctx.rotate(((FS.holeRot||0)*Math.PI)/180);
+        ctx.globalCompositeOperation='destination-out';
+        if(FS.shape==='circle'){
+          ctx.beginPath();
+          ctx.ellipse(0,0,Math.max(2,rw/2),Math.max(2,rh/2),0,0,Math.PI*2);
+          ctx.fill();
+        } else {
+          ctx.fillRect(-rw/2,-rh/2,rw,rh);
+        }
+        ctx.restore();
+        var out;
+        try{ out=canvas.toDataURL('image/png'); }
+        catch(sec){
+          console.warn('[punchPreview] toDataURL', sec);
+          toastSafe('Não foi possível furar (segurança do navegador). Envie a arte de novo pelo arquivo.');
+          return;
+        }
+        art.src=out;
+        art.style.display='block';
+        FS.assetOrig=out;
+        FS.assetWork=out;
+        if(typeof FS.asset!=='undefined') FS.asset=out;
+        if(typeof FS.assetPunched!=='undefined') FS.assetPunched=out;
+        try{ if(typeof clearPaint==='function') clearPaint(); }catch(e){}
+        // feedback visual no fundo do estágio
+        try{
+          var stage=document.getElementById('v36Stage');
+          if(stage){
+            stage.style.backgroundImage='linear-gradient(45deg,#222 25%,transparent 25%),linear-gradient(-45deg,#222 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#222 75%),linear-gradient(-45deg,transparent 75%,#222 75%)';
+            stage.style.backgroundSize='16px 16px';
+            stage.style.backgroundPosition='0 0,0 8px,8px -8px,-8px 0';
+            stage.style.backgroundColor='#111';
+          }
+        }catch(e2){}
+        toastSafe('Furo feito · área transparente no recorte');
+      }catch(err){
+        console.warn(err);
+        toastSafe('Erro ao furar a arte');
+      }
+    };
+    img.onerror=function(){ toastSafe('Erro ao furar a arte'); };
+    img.src=srcData;
+  }
+  if(String(src).indexOf('data:')===0){
+    finishWith(src);
+  } else if(typeof htToDataUrl==='function'){
+    htToDataUrl(src, function(d){
+      if(!d){ toastSafe('Não consegui ler a moldura. Envie o arquivo de novo.'); return; }
+      finishWith(d);
+    });
+  } else {
+    finishWith(src);
+  }
 }
 
 function deleteCurrentFrame(){
@@ -13830,48 +13961,57 @@ function composeAsset(done){
   var art=document.getElementById('v36Art');
   var paint=document.getElementById('v36Paint');
   if(!art || !art.src){ done(null); return; }
-  var img=new Image();
-  img.crossOrigin='anonymous';
-  img.onload=function(){
-    var w=img.naturalWidth||1080, h=img.naturalHeight||1440;
-    var canvas=document.createElement('canvas');
-    canvas.width=w; canvas.height=h;
-    var ctx=canvas.getContext('2d');
-    ctx.drawImage(img,0,0,w,h);
-    // overlay paint layer scaled
-    if(paint && paint.width){
-      ctx.drawImage(paint,0,0,w,h);
-    }
-    // permanent text from FS.text on final if wanted
-    if(FS.text){
-      ctx.save();
-      ctx.font='bold '+Math.round(FS.textSize*(w/340))+'px sans-serif';
-      ctx.fillStyle=FS.textColor||'#fff';
-      ctx.textAlign='center';
-      ctx.textBaseline='middle';
-      ctx.shadowColor='#000'; ctx.shadowBlur=6;
-      ctx.fillText(FS.text, w/2, h*(FS.textY/100));
-      ctx.restore();
-    }
-    // punch hole transparent
-    var x=(FS.L/100)*w, y=(FS.T/100)*h;
-    var rw=((100-FS.L-FS.R)/100)*w, rh=((100-FS.T-FS.B)/100)*h;
-    ctx.save();
-    ctx.translate(x+rw/2, y+rh/2);
-    ctx.rotate((FS.holeRot||0)*Math.PI/180);
-    ctx.globalCompositeOperation='destination-out';
-    if(FS.shape==='circle'){
-      ctx.beginPath();
-      ctx.ellipse(0,0,rw/2,rh/2,0,0,Math.PI*2);
-      ctx.fill();
-    } else {
-      ctx.fillRect(-rw/2,-rh/2,rw,rh);
-    }
-    ctx.restore();
-    done(canvas.toDataURL('image/png'));
-  };
-  img.onerror=function(){ done(FS.assetOrig||art.src); };
-  img.src=art.src;
+  function run(srcData){
+    var img=new Image();
+    img.onload=function(){
+      try{
+        var w=img.naturalWidth||1080, h=img.naturalHeight||1440;
+        var canvas=document.createElement('canvas');
+        canvas.width=w; canvas.height=h;
+        var ctx=canvas.getContext('2d', {willReadFrequently:true});
+        ctx.drawImage(img,0,0,w,h);
+        if(paint && paint.width){
+          try{ ctx.drawImage(paint,0,0,w,h); }catch(e){}
+        }
+        if(FS.text){
+          ctx.save();
+          ctx.font='bold '+Math.round(FS.textSize*(w/340))+'px sans-serif';
+          ctx.fillStyle=FS.textColor||'#fff';
+          ctx.textAlign='center';
+          ctx.textBaseline='middle';
+          ctx.shadowColor='#000'; ctx.shadowBlur=6;
+          ctx.fillText(FS.text, w/2, h*(FS.textY/100));
+          ctx.restore();
+        }
+        var x=(FS.L/100)*w, y=(FS.T/100)*h;
+        var rw=((100-FS.L-FS.R)/100)*w, rh=((100-FS.T-FS.B)/100)*h;
+        if(rw<4) rw=w*0.5; if(rh<4) rh=h*0.4;
+        ctx.save();
+        ctx.translate(x+rw/2, y+rh/2);
+        ctx.rotate((FS.holeRot||0)*Math.PI/180);
+        ctx.globalCompositeOperation='destination-out';
+        if(FS.shape==='circle'){
+          ctx.beginPath();
+          ctx.ellipse(0,0,Math.max(2,rw/2),Math.max(2,rh/2),0,0,Math.PI*2);
+          ctx.fill();
+        } else {
+          ctx.fillRect(-rw/2,-rh/2,rw,rh);
+        }
+        ctx.restore();
+        try{ done(canvas.toDataURL('image/png')); }
+        catch(sec){ console.warn('[composeAsset]', sec); done(srcData || FS.assetOrig || art.src); }
+      }catch(err){ console.warn(err); done(FS.assetOrig||art.src); }
+    };
+    img.onerror=function(){ done(FS.assetOrig||art.src); };
+    img.src=srcData;
+  }
+  var src = art.src;
+  if(String(src).indexOf('data:')===0){ run(src); return; }
+  if(typeof htToDataUrl==='function'){
+    htToDataUrl(src, function(d){ run(d || src); });
+  } else {
+    run(src);
+  }
 }
 
 function saveFrame(){
@@ -13952,8 +14092,17 @@ function loadFrame(mode, id){
   FS.editingMode=mode;
   FS.isBuiltin=(f._src==='builtin');
   FS.assetOrig=f.asset;
+  FS.assetWork=f.asset;
   var art=document.getElementById('v36Art');
-  if(art){ art.src=f.asset; art.style.display='block'; }
+  if(art){ art.src=(typeof htAssetUrl==='function'?htAssetUrl(f.asset):f.asset); art.style.display='block'; }
+  // Converte para dataURL para o "Furar" e o save não quebrarem por CORS
+  if(f.asset && String(f.asset).indexOf('data:')!==0 && typeof htToDataUrl==='function'){
+    htToDataUrl(typeof htAssetUrl==='function'?htAssetUrl(f.asset):f.asset, function(d){
+      if(!d) return;
+      FS.assetOrig=d; FS.assetWork=d;
+      if(art){ art.src=d; }
+    });
+  }
   if(f.window){
     FS.L=Number(f.window.left)||12;
     FS.R=Number(f.window.right)||12;
