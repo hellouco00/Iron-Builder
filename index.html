@@ -1003,18 +1003,35 @@ body:has(#authWelcome.active) #bottom {
 </style>
 
 <style id="htKillShareOnAdmin">
-/* Compartilhamento NUNCA sobrepõe Master (gmRoot) nem Admin */
+/* Overlays escondidos NÃO podem bloquear clique */
+#dayCelebrate:not(.show),
+#celebrate:not(.show),
+#restOverlay:not(.show),
+#monthEndModal:not(.show){
+  display:none !important;
+  pointer-events:none !important;
+  visibility:hidden !important;
+  opacity:0 !important;
+  z-index:-1 !important;
+}
+/* Compartilhamento nunca sobrepõe Master/Admin */
 body:has(#admin.screen.active) #dayCelebrate,
 body:has(#admin.editor-open) #dayCelebrate,
 body:has(#gmRoot.show) #dayCelebrate,
-#gmRoot.show ~ #dayCelebrate,
-#admin.screen.active ~ * #dayCelebrate,
-#dayCelebrate.ht-blocked-by-admin {
-  display: none !important;
-  visibility: hidden !important;
-  pointer-events: none !important;
-  opacity: 0 !important;
-  z-index: -1 !important;
+#dayCelebrate.ht-blocked-by-admin{
+  display:none !important;
+  pointer-events:none !important;
+  visibility:hidden !important;
+  opacity:0 !important;
+  z-index:-1 !important;
+}
+/* Botões de treino sempre clicáveis */
+button.bigBtn,
+#detail button,
+#workout button{
+  pointer-events:auto !important;
+  position:relative;
+  z-index:5;
 }
 </style>
 
@@ -1577,7 +1594,7 @@ body:has(#gmRoot.show) #dayCelebrate,
   <div style="font-size:10px;color:#71839a;margin-top:8px;text-align:center">Toque em ● série feita de novo para desfazer · ou toque no número</div>
 </div>
 
-<button class="bigBtn" onclick="completeCurrent()">✓ Concluir exercício</button>
+<button type="button" class="bigBtn" id="htBtnCompleteEx" onclick="try{window.completeCurrent()}catch(e){alert(e)}">✓ Concluir exercício</button>
 </div>
 <div class="note">A classificação de intensidade é uma estimativa baseada na carga informada e nas repetições. Não representa diagnóstico ou medida clínica.</div>
 </section>
@@ -22408,26 +22425,14 @@ console.log("[HT] Catraca: onclick inline only (global capture disabled)");
     var host = profileScreen.querySelector('.detailCard') || profileScreen;
     var after = document.getElementById('htV39ProfileBlock') || document.getElementById('htV39AccessBlock') || host;
     var parent = after.parentNode || profileScreen;
-    // Só cria se ainda não existe — evita piscar (re-render constante)
+    // Cria UMA vez cada bloco — sem reordenar depois (reordenar luta com pagamento e pisca)
     if (!document.getElementById('htBillingDayBlock')) {
       renderBillingBlock(parent, (currentUserSafe() && currentUserSafe().profile) || {});
     }
     if (!document.getElementById('htMasterContactBlock')) {
       renderMasterContactBlock(parent);
     }
-    // se já existe, NÃO re-renderiza (evita piscar com pagamento)
-    // reordenar
-    try {
-      var qr = document.getElementById('htV39ProfileBlock');
-      var bill = document.getElementById('htBillingDayBlock');
-      var contact = document.getElementById('htMasterContactBlock');
-      var acc = document.getElementById('htV39AccessBlock');
-      if (qr && bill && qr.nextSibling !== bill) qr.parentNode.insertBefore(bill, qr.nextSibling);
-      if (bill && contact && bill.nextSibling !== contact) bill.parentNode.insertBefore(contact, bill.nextSibling);
-      if (contact && acc && contact.nextSibling !== acc) {
-        // access pode ficar depois
-      }
-    } catch (e) {}
+    // NÃO faz insertBefore em loop — isso causava o pisca-pisca
   }
 
   var _prevExtras = window.htV39RenderProfileExtras;
@@ -22441,13 +22446,18 @@ console.log("[HT] Catraca: onclick inline only (global capture disabled)");
   // observar tela de perfil
   function watch() {
     var p = document.getElementById('profile');
-    if (!p) return;
+    if (!p || p.__htProfileWatch) return;
+    p.__htProfileWatch = true;
+    var lastActive = false;
     try {
       new MutationObserver(function () {
-        if (p.classList.contains('active')) {
+        var now = p.classList.contains('active');
+        // só quando ENTRA no perfil (não a cada mutação)
+        if (now && !lastActive) {
           setTimeout(refreshProfileExtras, 80);
           setTimeout(injectAdminContactPanel, 100);
         }
+        lastActive = now;
       }).observe(p, { attributes: true, attributeFilter: ['class'] });
     } catch (e) {}
   }
@@ -22612,22 +22622,21 @@ console.log("[HT] Catraca: onclick inline only (global capture disabled)");
   function _placePayNow() {
     var profile = document.getElementById('profile');
     if (!profile || !profile.classList.contains('active')) return;
+    // Já existe: não mexe mais no DOM (fim do pisca-pisca)
+    if (document.getElementById('htStudentPayBlock')) return;
     var after = document.getElementById('htBillingDayBlock') || document.getElementById('htMasterContactBlock') || document.getElementById('htV39ProfileBlock') || profile;
     var parent = after.parentNode || profile;
-    // Se já existe o bloco de pagamento, não reescreve o HTML (fim do pisca-pisca)
-    if (document.getElementById('htStudentPayBlock')) {
-      try {
-        var pay = document.getElementById('htStudentPayBlock');
-        var bill = document.getElementById('htBillingDayBlock');
-        if (bill && pay && bill.nextSibling !== pay) bill.parentNode.insertBefore(pay, bill.nextSibling);
-      } catch (e0) {}
-      return;
-    }
     renderPayBlock(parent);
+    // Posiciona só na criação (uma vez)
     try {
       var pay = document.getElementById('htStudentPayBlock');
       var bill = document.getElementById('htBillingDayBlock');
-      if (bill && pay && bill.nextSibling !== pay) bill.parentNode.insertBefore(pay, bill.nextSibling);
+      var contact = document.getElementById('htMasterContactBlock');
+      if (bill && pay) {
+        // ordem: billing -> pagamento -> suporte
+        if (bill.nextSibling !== pay) bill.parentNode.insertBefore(pay, bill.nextSibling);
+        if (contact && pay.nextSibling !== contact) pay.parentNode.insertBefore(contact, pay.nextSibling);
+      }
     } catch (e) {}
   }
 
@@ -22638,8 +22647,14 @@ console.log("[HT] Catraca: onclick inline only (global capture disabled)");
   };
   try {
     var p = document.getElementById('profile');
-    if (p) {
-      new MutationObserver(function () { if (p.classList.contains('active')) setTimeout(place, 100); }).observe(p, { attributes: true, attributeFilter: ['class'] });
+    if (p && !p.__htPayWatch) {
+      p.__htPayWatch = true;
+      var lastPayActive = false;
+      new MutationObserver(function () {
+        var now = p.classList.contains('active');
+        if (now && !lastPayActive) setTimeout(place, 100);
+        lastPayActive = now;
+      }).observe(p, { attributes: true, attributeFilter: ['class'] });
     }
   } catch (e) {}
   setTimeout(place, 800);
@@ -22829,11 +22844,26 @@ console.log("[HT] Catraca: onclick inline only (global capture disabled)");
   function forceVisible(id){
     var el=document.getElementById(id);
     if(!el) return;
-    if(el.classList.contains('show')){
-      el.style.display = (id==='celebrate') ? 'grid' : 'flex';
-      el.style.visibility='visible';
-      el.style.pointerEvents='auto';
+    if(!el.classList.contains('show')){
+      // garante que fechado não bloqueia clique
+      el.style.setProperty('display','none','important');
+      el.style.setProperty('pointer-events','none','important');
+      return;
     }
+    // dayCelebrate só se autorizado
+    if(id==='dayCelebrate'){
+      var tok=window.__htShareToken;
+      var ok=!!(window.__htShareAllowed||window.__htWeeklyShareActive||(tok&&tok.t&&(Date.now()-tok.t)<5*60*1000));
+      if(!ok){
+        el.classList.remove('show');
+        el.style.setProperty('display','none','important');
+        el.style.setProperty('pointer-events','none','important');
+        return;
+      }
+    }
+    el.style.display = (id==='celebrate') ? 'grid' : 'flex';
+    el.style.visibility='visible';
+    el.style.pointerEvents='auto';
   }
   function repair(){
     forceVisible('restOverlay');
@@ -22926,6 +22956,16 @@ console.log("[HT] Catraca: onclick inline only (global capture disabled)");
   }
 
   function openShareUI() {
+    // NÃO abrir compartilhamento sem autorização (evita cobrir treino/série/timer/nav)
+    try {
+      var tok = window.__htShareToken;
+      var ok = !!(window.__htShareAllowed || window.__htWeeklyShareActive || (tok && tok.t && (Date.now()-tok.t)<5*60*1000));
+      if (!ok) return;
+      var ad = document.getElementById('admin');
+      if (ad && (ad.classList.contains('active') || ad.classList.contains('editor-open'))) return;
+      var gm = document.getElementById('gmRoot');
+      if (gm && gm.classList.contains('show')) return;
+    } catch (e0) { return; }
     try {
       if (typeof htEnsureDayCelebrateOpen === 'function') htEnsureDayCelebrateOpen();
     } catch (e) {}
@@ -27423,17 +27463,18 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
 
 
 
+
+
+
 <script id="htFinalShareAndBfFix">
 (function(){
   'use strict';
-  var VER = 'HT-FINAL-2026-03';
+  var VER = 'HT-FINAL-B-2026';
 
-  /* ========== 1) COMPARTILHAMENTO: só com token explícito ========== */
-  // Token só é válido por 2 minutos após completar treino ou abrir ranking
+  /* ---- Token de compartilhamento (só treino completo / ranking) ---- */
   window.__htShareToken = window.__htShareToken || null;
-
   function giveShareToken(reason){
-    window.__htShareToken = { reason: reason || 'ok', t: Date.now() };
+    window.__htShareToken = { reason: reason||'ok', t: Date.now() };
     window.__htShareAllowed = true;
   }
   function clearShareToken(){
@@ -27447,25 +27488,17 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
     if(Date.now() - tok.t > 5*60*1000){ clearShareToken(); return false; }
     return true;
   }
+  window.htGiveShareToken = giveShareToken;
+  window.htClearShareToken = clearShareToken;
 
   function panelOpen(){
     try{
       var ad = document.getElementById('admin');
-      if(ad && (ad.classList.contains('active') || ad.classList.contains('editor-open'))) return 'admin';
+      if(ad && (ad.classList.contains('active') || ad.classList.contains('editor-open'))) return true;
       var gm = document.getElementById('gmRoot');
-      if(gm){
-        var st = window.getComputedStyle(gm);
-        if(gm.classList.contains('show') || (st && st.display !== 'none' && st.visibility !== 'hidden' && gm.querySelector('.gmPanel, .gmShell, .gmWrap, [class*="gm"]'))){
-          // se gmRoot está visível na tela
-          if(gm.classList.contains('show')) return 'gm';
-          if(st.display !== 'none' && st.opacity !== '0' && gm.offsetParent !== null) return 'gm';
-        }
-      }
-      // auth admin login
-      var al = document.getElementById('authAdminLogin');
-      if(al && al.classList.contains('active')) return 'authAdmin';
+      if(gm && gm.classList.contains('show')) return true;
     }catch(e){}
-    return null;
+    return false;
   }
 
   function hideShareHard(){
@@ -27473,326 +27506,335 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
       var day = document.getElementById('dayCelebrate');
       if(!day) return;
       day.classList.remove('show');
-      day.setAttribute('data-ht-share','0');
       day.style.setProperty('display','none','important');
-      day.style.setProperty('visibility','hidden','important');
       day.style.setProperty('pointer-events','none','important');
+      day.style.setProperty('visibility','hidden','important');
       day.style.setProperty('opacity','0','important');
-      day.style.setProperty('z-index','-9999','important');
+      day.style.setProperty('z-index','-1','important');
     }catch(e){}
   }
 
-  function showShareHard(){
-    try{
+  function hideStuckOverlays(){
+    // NÃO fecha celebrate/rest se estiverem legítimos — só se dayCelebrate vazar
+    if(panelOpen()) hideShareHard();
+    else if(!hasValidShareToken()){
       var day = document.getElementById('dayCelebrate');
-      if(!day) return;
-      day.setAttribute('data-ht-share','1');
-      day.classList.add('show');
-      day.style.setProperty('display','flex','important');
-      day.style.setProperty('visibility','visible','important');
-      day.style.setProperty('pointer-events','auto','important');
-      day.style.setProperty('opacity','1','important');
-      day.style.setProperty('z-index','90','important');
-    }catch(e){}
-  }
-
-  function police(){
-    var p = panelOpen();
-    if(p){
-      clearShareToken();
-      hideShareHard();
-      return;
-    }
-    var day = document.getElementById('dayCelebrate');
-    if(!day) return;
-    var wantsOpen = day.classList.contains('show') || day.getAttribute('data-ht-share')==='1';
-    if(wantsOpen && !hasValidShareToken()){
-      hideShareHard();
+      if(day && day.classList.contains('show')) hideShareHard();
     }
   }
 
-  // Wrap completeCurrent to give token
-  function wrapComplete(){
-    if(typeof window.completeCurrent !== 'function' || window.completeCurrent.__htFinal) return;
+  /* ---- openDayCelebrate: exige token ---- */
+  function installOpenGate(){
+    if(typeof window.openDayCelebrate !== 'function') return;
+    if(window.openDayCelebrate.__htFinalB) return;
+    var prev = window.openDayCelebrate;
+    window.openDayCelebrate = function(){
+      try{
+        if(panelOpen()){ hideShareHard(); return; }
+        // se ainda não tem token, cria só se flag explícita de completeCurrent
+        if(!hasValidShareToken()){
+          if(window.__htShareAllowed || window.__htWeeklyShareActive){
+            giveShareToken(window.__htWeeklyShareActive ? 'ranking' : 'day-complete');
+          } else {
+            hideShareHard();
+            return;
+          }
+        }
+        return prev.apply(this, arguments);
+      }catch(e){ try{ console.warn(e); }catch(_){} }
+    };
+    window.openDayCelebrate.__htFinalB = true;
+  }
+
+  /* ---- completeCurrent: NÃO quebrar o botão ---- */
+  function installComplete(){
+    if(typeof window.completeCurrent !== 'function') return;
+    if(window.completeCurrent.__htFinalB) return;
     var prev = window.completeCurrent;
     window.completeCurrent = function(){
       try{
-        // deixa o original decidir se dia está completo; se chamar openDayCelebrate, token já existe
-        var before = window.openDayCelebrate;
-        window.openDayCelebrate = function(){
-          giveShareToken('day-complete');
-          if(typeof before === 'function') return before.apply(this, arguments);
-        };
-        var r = prev.apply(this, arguments);
-        window.openDayCelebrate = before;
-        // se o original setou flags, garante token
-        if(window.__htShareAllowed) giveShareToken('day-complete');
-        return r;
-      }catch(e){
-        try{ return prev.apply(this, arguments); }catch(e2){}
+        // Antes: se for o 4º exercício, autoriza share
+        try{
+          var d = (typeof days!=='undefined' && typeof currentDay!=='undefined') ? days[currentDay] : null;
+          var willCompleteDay = false;
+          if(typeof isDayMainDone==='function' && typeof currentDay!=='undefined'){
+            // após setExDone o original marca; aqui só prepara token se já 3 feitos e este é o 4º
+            // deixa o original setar flags; garantimos token logo após
+          }
+        }catch(e0){}
+        var ret = prev.apply(this, arguments);
+        // Depois: se o original abriu share / setou flag, garante token
+        try{
+          if(window.__htShareAllowed || window.__htWeeklyShareActive){
+            giveShareToken(window.__htWeeklyShareActive ? 'ranking' : 'day-complete');
+          }
+          // se dayCelebrate ganhou .show sem token, fecha
+          if(!hasValidShareToken()){
+            var day=document.getElementById('dayCelebrate');
+            if(day && day.classList.contains('show')) hideShareHard();
+          }
+        }catch(e1){}
+        return ret;
+      }catch(err){
+        try{ console.warn('[HT] completeCurrent error', err); }catch(_){}
+        // fallback: tenta original de novo sem wrapper logic
+        try{ return prev.apply(this, arguments); }catch(e2){ alert('Erro ao concluir: '+(err&&err.message||err)); }
       }
     };
-    window.completeCurrent.__htFinal = true;
+    window.completeCurrent.__htFinalB = true;
+    // expõe também no escopo onclick inline
+    try{ window.completeCurrent = window.completeCurrent; }catch(e){}
   }
 
-  function wrapWeekly(){
-    if(typeof window.htOpenWeeklyCelebrate !== 'function' || window.htOpenWeeklyCelebrate.__htFinal) return;
+  function installWeekly(){
+    if(typeof window.htOpenWeeklyCelebrate !== 'function' || window.htOpenWeeklyCelebrate.__htFinalB) return;
     var prev = window.htOpenWeeklyCelebrate;
     window.htOpenWeeklyCelebrate = function(){
       giveShareToken('ranking');
       window.__htWeeklyShareActive = true;
+      window.__htShareAllowed = true;
       return prev.apply(this, arguments);
     };
-    window.htOpenWeeklyCelebrate.__htFinal = true;
+    window.htOpenWeeklyCelebrate.__htFinalB = true;
   }
 
-  function wrapOpenDay(){
-    if(typeof window.openDayCelebrate !== 'function') return;
-    if(window.openDayCelebrate.__htFinal) return;
-    var prev = window.openDayCelebrate;
-    window.openDayCelebrate = function(){
-      if(panelOpen()){ hideShareHard(); return; }
-      if(!hasValidShareToken() && !window.__htShareAllowed && !window.__htWeeklyShareActive){
-        hideShareHard();
-        return;
-      }
-      giveShareToken(window.__htShareToken && window.__htShareToken.reason || 'open');
-      var r = prev.apply(this, arguments);
-      showShareHard();
-      return r;
-    };
-    window.openDayCelebrate.__htFinal = true;
-  }
-
-  function wrapEnsure(){
+  function installEnsure(){
     window.htEnsureDayCelebrateOpen = function(){
       if(panelOpen()){ hideShareHard(); return; }
       if(!hasValidShareToken()){ hideShareHard(); return; }
-      showShareHard();
+      try{
+        var day=document.getElementById('dayCelebrate');
+        if(!day) return;
+        day.classList.add('show');
+        day.style.setProperty('display','flex','important');
+        day.style.setProperty('pointer-events','auto','important');
+        day.style.setProperty('visibility','visible','important');
+        day.style.setProperty('opacity','1','important');
+        day.style.setProperty('z-index','90','important');
+      }catch(e){}
     };
   }
 
-  function wrapClose(){
-    if(typeof window.closeDayCelebrate === 'function' && !window.closeDayCelebrate.__htFinal){
-      var prev = window.closeDayCelebrate;
-      window.closeDayCelebrate = function(){
+  function installClose(){
+    if(typeof window.closeDayCelebrate==='function' && !window.closeDayCelebrate.__htFinalB){
+      var prev=window.closeDayCelebrate;
+      window.closeDayCelebrate=function(){
         clearShareToken();
         hideShareHard();
-        try{ return prev.apply(this, arguments); }catch(e){}
+        try{ return prev.apply(this,arguments); }catch(e){}
       };
-      window.closeDayCelebrate.__htFinal = true;
+      window.closeDayCelebrate.__htFinalB=true;
     }
   }
 
-  function wrapShow(){
-    if(typeof window.show !== 'function' || window.show.__htFinalShare) return;
-    var prev = window.show;
-    window.show = function(id){
-      try{
-        if(id === 'admin' || id === 'authAdminLogin' || id === 'authWelcome'){
-          clearShareToken();
-          hideShareHard();
-        }
-        if(id === 'evolution' || id === 'nutrition' || id === 'home' || id === 'profile' || id === 'cardio'){
-          // troca de aba normal fecha share
-          clearShareToken();
-          hideShareHard();
-        }
-      }catch(e){}
-      return prev.apply(this, arguments);
-    };
-    window.show.__htFinalShare = true;
-  }
-
-  // Neutraliza keepCelebrate*
-  function neuterKeep(){
-    window.keepCelebrateOpen = function(){ if(hasValidShareToken() && !panelOpen()) showShareHard(); };
-    window.keepCelebrate = function(){ if(hasValidShareToken() && !panelOpen()) showShareHard(); };
-  }
-
-  // MutationObserver: qualquer tentativa de abrir sem token é morta
-  function observe(){
-    var day = document.getElementById('dayCelebrate');
-    if(!day || day.__htFinalObs) return;
-    day.__htFinalObs = true;
-    new MutationObserver(function(){
-      if(panelOpen() || !hasValidShareToken()){
-        if(day.classList.contains('show')) hideShareHard();
-      }
-    }).observe(day, { attributes:true, attributeFilter:['class','style'] });
-  }
-
-  /* ========== 2) BF CALCULATOR — independente ========== */
+  /* ---- BF ---- */
   function parseNum(v){
     if(v==null) return NaN;
-    var s = String(v).trim().replace(/\s/g,'');
+    var s=String(v).trim().replace(/\s/g,'');
     if(!s) return NaN;
-    if(s.indexOf(',')>=0 && s.indexOf('.')>=0){
-      s = s.replace(/\./g,'').replace(',', '.');
-    } else {
-      s = s.replace(',', '.');
-    }
-    s = s.replace(/[^0-9.+-]/g,'');
-    var n = parseFloat(s);
-    return n;
+    if(s.indexOf(',')>=0 && s.indexOf('.')>=0) s=s.replace(/\./g,'').replace(',','.');
+    else s=s.replace(',','.');
+    s=s.replace(/[^0-9.+-]/g,'');
+    return parseFloat(s);
   }
-
-  function ensureBfCard(){
-    var pane = document.getElementById('htPaneExames');
+  function ensureBf(){
+    var pane=document.getElementById('htPaneExames');
     if(!pane) return;
-    var card = document.getElementById('htBfCalcCard');
+    var card=document.getElementById('htBfCalcCard');
     if(!card){
-      card = document.createElement('div');
-      card.id = 'htBfCalcCard';
-      card.className = 'htEvoSection';
-      card.innerHTML =
-        '<h3>🧮 Calculadora de BF (% gordura)</h3>'+
-        '<p style="font-size:11px;color:#9fb0c5;margin:0 0 10px;line-height:1.4">Use <b>ponto ou vírgula</b>. Altura: <b>1,72</b> ou <b>172</b>. Depois toque em Calcular BF.</p>'+
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'+
-          '<input id="htBfAge" type="text" inputmode="decimal" placeholder="Idade" style="width:100%;padding:12px;background:#050c16;border:1px solid #30415d;color:#fff;border-radius:12px">'+
-          '<input id="htBfHeight" type="text" inputmode="decimal" placeholder="Altura 1,72 ou 172" style="width:100%;padding:12px;background:#050c16;border:1px solid #30415d;color:#fff;border-radius:12px">'+
-          '<input id="htBfWeight" type="text" inputmode="decimal" placeholder="Peso kg" style="width:100%;padding:12px;background:#050c16;border:1px solid #30415d;color:#fff;border-radius:12px">'+
-          '<select id="htBfGender" style="width:100%;padding:12px;background:#050c16;border:1px solid #30415d;color:#fff;border-radius:12px"><option value="masculino">Masculino</option><option value="feminino">Feminino</option></select>'+
-          '<input id="htBfWaist" type="text" inputmode="decimal" placeholder="Cintura cm" style="width:100%;padding:12px;background:#050c16;border:1px solid #30415d;color:#fff;border-radius:12px">'+
-          '<input id="htBfNeck" type="text" inputmode="decimal" placeholder="Pescoço cm" style="width:100%;padding:12px;background:#050c16;border:1px solid #30415d;color:#fff;border-radius:12px">'+
-          '<input id="htBfHip" type="text" inputmode="decimal" placeholder="Quadril cm (mulheres)" style="width:100%;padding:12px;background:#050c16;border:1px solid #30415d;color:#fff;border-radius:12px;grid-column:1/-1">'+
-        '</div>'+
-        '<button type="button" class="htBtn" id="htBfCalcBtn" style="width:100%">Calcular BF</button>'+
+      card=document.createElement('div');
+      card.id='htBfCalcCard';
+      card.className='htEvoSection';
+      card.innerHTML='<h3>🧮 Calculadora de BF (% gordura)</h3>'+
+        '<p style="font-size:11px;color:#9fb0c5;margin:0 0 10px">Altura: <b>1,72</b> ou <b>172</b>. Ponto ou vírgula.</p>'+
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
+        '<input id="htBfAge" type="text" inputmode="decimal" placeholder="Idade" style="padding:12px;background:#050c16;border:1px solid #30415d;color:#fff;border-radius:12px">'+
+        '<input id="htBfHeight" type="text" inputmode="decimal" placeholder="Altura 1,72 ou 172" style="padding:12px;background:#050c16;border:1px solid #30415d;color:#fff;border-radius:12px">'+
+        '<input id="htBfWeight" type="text" inputmode="decimal" placeholder="Peso kg" style="padding:12px;background:#050c16;border:1px solid #30415d;color:#fff;border-radius:12px">'+
+        '<select id="htBfGender" style="padding:12px;background:#050c16;border:1px solid #30415d;color:#fff;border-radius:12px"><option value="masculino">Masculino</option><option value="feminino">Feminino</option></select>'+
+        '<input id="htBfWaist" type="text" inputmode="decimal" placeholder="Cintura cm" style="padding:12px;background:#050c16;border:1px solid #30415d;color:#fff;border-radius:12px">'+
+        '<input id="htBfNeck" type="text" inputmode="decimal" placeholder="Pescoço cm" style="padding:12px;background:#050c16;border:1px solid #30415d;color:#fff;border-radius:12px">'+
+        '<input id="htBfHip" type="text" inputmode="decimal" placeholder="Quadril cm" style="padding:12px;background:#050c16;border:1px solid #30415d;color:#fff;border-radius:12px;grid-column:1/-1">'+
+        '</div><button type="button" class="htBtn" id="htBfCalcBtn" style="width:100%;margin-top:8px">Calcular BF</button>'+
         '<div id="htBfResult" style="display:none;margin-top:12px;padding:14px;border-radius:14px;background:#0a1a12;border:1px solid #20e08355;text-align:center"></div>';
       pane.insertBefore(card, pane.firstChild);
     }
-    // rewire always
-    var btn = document.getElementById('htBfCalcBtn');
+    var btn=document.getElementById('htBfCalcBtn');
     if(btn){
-      btn.onclick = function(ev){
-        if(ev){ ev.preventDefault(); ev.stopPropagation(); }
-        clearShareToken(); hideShareHard();
-        runBf();
-        return false;
-      };
+      btn.onclick=function(ev){ if(ev){ev.preventDefault();ev.stopPropagation();} runBf(); return false; };
     }
-    // nunca type=number
     ['htBfAge','htBfHeight','htBfWeight','htBfWaist','htBfNeck','htBfHip'].forEach(function(id){
-      var el = document.getElementById(id);
-      if(!el) return;
-      try{
-        el.setAttribute('type','text');
-        el.setAttribute('inputmode','decimal');
-        el.removeAttribute('min'); el.removeAttribute('max'); el.removeAttribute('step');
-      }catch(e){}
+      var el=document.getElementById(id); if(!el) return;
+      try{ el.type='text'; el.setAttribute('inputmode','decimal'); }catch(e){}
     });
   }
-
-  function val(id){
-    var el = document.getElementById(id);
-    return el ? parseNum(el.value) : NaN;
-  }
-
   function runBf(){
-    var log10 = Math.log10 || function(x){ return Math.log(x)/Math.LN10; };
-    var age = val('htBfAge'); if(!isFinite(age) || age<=0) age = 30;
-    var height = val('htBfHeight');
-    var weight = val('htBfWeight');
-    var waist = val('htBfWaist');
-    var neck = val('htBfNeck');
-    var hip = val('htBfHip');
-    var gEl = document.getElementById('htBfGender');
-    var isF = gEl && gEl.value === 'feminino';
-    var box = document.getElementById('htBfResult');
-    if(!box) return;
-
-    // altura em metros → cm
-    if(isFinite(height) && height > 0 && height < 3) height = height * 100;
-
-    if(!isFinite(height) || height < 100){
-      box.style.display = 'block';
-      box.innerHTML = '<b style="color:#ff9dc8">Informe a altura (ex: 1,72 ou 172).</b>';
-      return;
-    }
-
-    var bf = null, method = '';
+    var log10=Math.log10||function(x){return Math.log(x)/Math.LN10;};
+    function v(id){ var el=document.getElementById(id); return el?parseNum(el.value):NaN; }
+    var age=v('htBfAge'); if(!isFinite(age)||age<=0) age=30;
+    var height=v('htBfHeight'), weight=v('htBfWeight'), waist=v('htBfWaist'), neck=v('htBfNeck'), hip=v('htBfHip');
+    var isF=(document.getElementById('htBfGender')||{}).value==='feminino';
+    var box=document.getElementById('htBfResult'); if(!box) return;
+    if(isFinite(height)&&height>0&&height<3) height=height*100;
+    if(!isFinite(height)||height<100){ box.style.display='block'; box.innerHTML='<b style="color:#ff9dc8">Informe a altura (1,72 ou 172).</b>'; return; }
+    var bf=null, method='';
     try{
-      if(isFinite(waist) && isFinite(neck) && waist > neck){
-        if(isF){
-          if(isFinite(hip) && hip > 0){
-            bf = 495/(1.29579 - 0.35004*log10(waist+hip-neck) + 0.22100*log10(height)) - 450;
-            method = 'US Navy (cintura + pescoço + quadril)';
-          }
-        } else {
-          bf = 495/(1.0324 - 0.19077*log10(waist-neck) + 0.15456*log10(height)) - 450;
-          method = 'US Navy (cintura + pescoço)';
-        }
-        if(!isFinite(bf) || bf < 2 || bf > 70) bf = null;
+      if(isFinite(waist)&&isFinite(neck)&&waist>neck){
+        if(isF && isFinite(hip)&&hip>0){ bf=495/(1.29579-0.35004*log10(waist+hip-neck)+0.221*log10(height))-450; method='US Navy'; }
+        else if(!isF){ bf=495/(1.0324-0.19077*log10(waist-neck)+0.15456*log10(height))-450; method='US Navy'; }
+        if(!isFinite(bf)||bf<2||bf>70) bf=null;
       }
-    }catch(e){ bf = null; }
-
-    if(bf === null){
-      if(!isFinite(weight) || weight < 25){
-        box.style.display = 'block';
-        box.innerHTML = '<b style="color:#ff9dc8">Informe o peso (kg) ou cintura e pescoço.</b>';
-        return;
-      }
-      var hM = height/100;
-      var bmi = weight/(hM*hM);
-      var sex = isF ? 0 : 1;
-      bf = 1.20*bmi + 0.23*age - 10.8*sex - 5.4;
-      method = 'Estimativa por IMC (adicione cintura e pescoço para mais precisão)';
-      if(!isFinite(bf)){
-        box.style.display='block';
-        box.innerHTML='<b style="color:#ff9dc8">Não foi possível calcular.</b>';
-        return;
-      }
+    }catch(e){ bf=null; }
+    if(bf===null){
+      if(!isFinite(weight)||weight<25){ box.style.display='block'; box.innerHTML='<b style="color:#ff9dc8">Informe peso ou cintura/pescoço.</b>'; return; }
+      var hM=height/100, bmi=weight/(hM*hM), sex=isF?0:1;
+      bf=1.20*bmi+0.23*age-10.8*sex-5.4; method='Estimativa por IMC';
     }
-
-    bf = Math.round(bf*10)/10;
-    var cat='ok', catLabel='Adequado', color='#20e083';
-    if(isF){
-      if(bf>=32){ cat='bad'; catLabel='Alto'; color='#f04f4f'; }
-      else if(bf>=25){ cat='warn'; catLabel='Atenção'; color='#ffbd3e'; }
-      else if(bf<14){ cat='warn'; catLabel='Muito baixo'; color='#ffbd3e'; }
-    } else {
-      if(bf>=25){ cat='bad'; catLabel='Alto'; color='#f04f4f'; }
-      else if(bf>=18){ cat='warn'; catLabel='Atenção'; color='#ffbd3e'; }
-      else if(bf<6){ cat='warn'; catLabel='Muito baixo'; color='#ffbd3e'; }
-    }
+    bf=Math.round(bf*10)/10;
     box.style.display='block';
-    box.style.borderColor = color+'55';
-    box.innerHTML =
-      '<div style="font-size:12px;color:#9fb0c5;margin-bottom:4px">Seu BF estimado</div>'+
-      '<div style="font-size:36px;font-weight:950;color:'+color+';line-height:1">'+bf+'%</div>'+
-      '<div style="margin-top:6px;font-size:12px;font-weight:900;color:'+color+'">'+catLabel+'</div>'+
-      '<div style="margin-top:10px;font-size:10px;color:#9fb0c5;line-height:1.45">'+method+'<br>Altura usada: '+Math.round(height)+' cm</div>';
-
+    box.innerHTML='<div style="font-size:12px;color:#9fb0c5">Seu BF estimado</div><div style="font-size:36px;font-weight:950;color:#20e083">'+bf+'%</div><div style="font-size:10px;color:#9fb0c5;margin-top:8px">'+method+' · altura '+Math.round(height)+' cm</div>';
     try{
-      if(typeof htEnsureState==='function') htEnsureState();
-      if(typeof state!=='undefined' && state){
-        state.evolution = state.evolution || {};
-        state.evolution.bodyFat = bf;
-        state.evolution.bodyFatMethod = method;
-        if(typeof save==='function') save();
-      }
+      if(typeof state!=='undefined'&&state){ state.evolution=state.evolution||{}; state.evolution.bodyFat=bf; if(typeof save==='function') save(); }
       if(typeof toast==='function') toast('BF: '+bf+'%');
     }catch(e){}
   }
 
-  window.htFinalRunBf = runBf;
-  window.htGiveShareToken = giveShareToken;
-  window.htClearShareToken = clearShareToken;
-
   function boot(){
-    wrapComplete(); wrapWeekly(); wrapOpenDay(); wrapEnsure(); wrapClose(); wrapShow();
-    neuterKeep(); observe(); police(); ensureBfCard();
+    installOpenGate();
+    installComplete();
+    installWeekly();
+    installEnsure();
+    installClose();
+    ensureBf();
+    hideStuckOverlays();
+    // Garante que completeCurrent global existe para onclick inline
+    if(typeof window.completeCurrent==='function'){
+      try{ /* noop */ }catch(e){}
+    }
   }
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot,50); });
-  else setTimeout(boot,50);
+
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot, 80); });
+  else setTimeout(boot, 80);
+  // Reinstala só se outro script sobrescrever (sem reembrulhar em loop)
   setInterval(function(){
     try{
-      wrapComplete(); wrapWeekly(); wrapOpenDay(); wrapEnsure(); wrapShow();
-      neuterKeep(); observe(); police(); ensureBfCard();
+      if(typeof window.completeCurrent==='function' && !window.completeCurrent.__htFinalB) installComplete();
+      if(typeof window.openDayCelebrate==='function' && !window.openDayCelebrate.__htFinalB) installOpenGate();
+      installEnsure();
+      ensureBf();
+      hideStuckOverlays();
     }catch(e){}
-  }, 800);
+  }, 1200);
 
-  try{ console.log('['+VER+'] share token + BF final'); }catch(e){}
+  try{ console.log('['+VER+'] completeCurrent safe + share gate + BF'); }catch(e){}
+})();
+</script>
+
+
+<script id="htClickUnlockFinal">
+(function(){
+  'use strict';
+  function clearShareCover(){
+    try{
+      var tok = window.__htShareToken;
+      var ok = !!(window.__htShareAllowed || window.__htWeeklyShareActive || (tok && tok.t && (Date.now()-tok.t) < 5*60*1000));
+      var day = document.getElementById('dayCelebrate');
+      // Sem token: fecha e não bloqueia clique. Com token: deixa a celebração do dia.
+      if(day && !ok){
+        day.classList.remove('show');
+        day.style.setProperty('display','none','important');
+        day.style.setProperty('pointer-events','none','important');
+        day.style.setProperty('visibility','hidden','important');
+        day.style.setProperty('opacity','0','important');
+        day.style.setProperty('z-index','-1','important');
+      }
+      if(!ok){
+        try{ localStorage.removeItem('htShareOpenV9'); sessionStorage.removeItem('htShareOpenV9'); }catch(e){}
+      }
+      // overlays fechados
+      ['celebrate','restOverlay','monthEndModal'].forEach(function(id){
+        var el=document.getElementById(id);
+        if(el && !el.classList.contains('show')){
+          el.style.setProperty('display','none','important');
+          el.style.setProperty('pointer-events','none','important');
+        }
+      });
+      // gmRoot fantasma
+      var gm=document.getElementById('gmRoot');
+      if(gm && !gm.classList.contains('show')){
+        gm.style.setProperty('display','none','important');
+        gm.style.setProperty('pointer-events','none','important');
+      }
+    }catch(e){}
+  }
+  function unlockChrome(){
+    try{
+      document.body.style.pointerEvents = 'auto';
+      document.documentElement.style.pointerEvents = 'auto';
+      var bottom = document.getElementById('bottom');
+      if(bottom){
+        var wel = document.getElementById('authWelcome');
+        var admin = document.getElementById('admin');
+        var hide = (wel && wel.classList.contains('active')) || (admin && admin.classList.contains('active'));
+        var gm = document.getElementById('gmRoot');
+        if(gm && gm.classList.contains('show')) hide = true;
+        if(!hide){
+          bottom.style.setProperty('display','flex','important');
+          bottom.style.setProperty('pointer-events','auto','important');
+          bottom.style.setProperty('visibility','visible','important');
+          bottom.style.setProperty('z-index','1200','important');
+          bottom.querySelectorAll('.nav, button').forEach(function(b){
+            b.style.pointerEvents = 'auto';
+          });
+        }
+      }
+      // botões de série / timer
+      var box = document.getElementById('seriesTracker');
+      if(box){
+        box.style.pointerEvents = 'auto';
+        box.querySelectorAll('button, .seriesDot').forEach(function(el){
+          el.style.pointerEvents = 'auto';
+          el.style.touchAction = 'manipulation';
+        });
+      }
+      // reexpõe funções
+      if(typeof markSetDone==='function') window.markSetDone = markSetDone;
+      if(typeof startRestTimer==='function') window.startRestTimer = startRestTimer;
+      if(typeof onSeriesDotClick==='function') window.onSeriesDotClick = onSeriesDotClick;
+      if(typeof completeCurrent==='function') window.completeCurrent = window.completeCurrent;
+      if(typeof setType==='function') window.setType = window.setType;
+    }catch(e){}
+  }
+  function tick(){
+    clearShareCover();
+    unlockChrome();
+  }
+  setTimeout(tick, 100);
+  setTimeout(tick, 500);
+  setInterval(tick, 2000);
+  // ao entrar em treino/detalhe, limpa na hora
+  if(typeof window.show === 'function' && !window.show.__htClickUnlock){
+    var prev = window.show;
+    window.show = function(id){
+      var r = prev.apply(this, arguments);
+      if(id==='detail'||id==='workout'||id==='home'||id==='profile'||id==='cardio'||id==='nutrition'){
+        // limpa share residual só se não acabou de autorizar
+        try{
+          var tok = window.__htShareToken;
+          var fresh = tok && tok.t && (Date.now()-tok.t) < 3000;
+          if(!fresh){
+            window.__htShareAllowed = false;
+            window.__htWeeklyShareActive = false;
+            window.__htShareToken = null;
+          }
+        }catch(e){}
+        setTimeout(tick, 20);
+      }
+      return r;
+    };
+    window.show.__htClickUnlock = true;
+  }
+  try{ console.log('[HT] Click unlock final'); }catch(e){}
 })();
 </script>
 
