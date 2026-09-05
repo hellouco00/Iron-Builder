@@ -3701,35 +3701,48 @@ function markDayMainDone(day){
 }
 
 function completeCurrent(){
- const loadVal=+document.getElementById("load").value||0;
- setExDone(currentDay, currentEx, true, loadVal);
- // loads com a mesma chave de progresso
- state.loads[progressKey(currentDay, currentEx)] = loadVal;
- try{ recordMonthExercise(currentDay, currentEx); }catch(e){}
- save();
- try{ renderWorkout(); }catch(eW){}
- try{ renderHome(); }catch(eH){}
- const d=days[currentDay];
- // 4 principais concluídos = dia verde + celebração + câmera
- const mainDone = (typeof isDayMainDone==='function') ? isDayMainDone(currentDay) : (d && d.exercises && d.exercises.slice(0,4).every((_,i)=>isExDone(currentDay,i)));
- if(mainDone){
-   try{ markDayMainDone(currentDay); }catch(eM){}
-   try{ recordMonthWorkout(currentDay); }catch(e){}
-   try{ renderHome(); }catch(eH2){}
-   try{
-     window.__htShareAllowed = true;
-     window.__htWeeklyShareActive = false;
-     if(typeof window.htGiveShareToken==='function') window.htGiveShareToken('day-complete');
-     else window.__htShareToken = { reason:'day-complete', t: Date.now() };
-   }catch(eA){}
-   openDayCelebrate();
-   // Câmera NÃO abre sozinha — só se a pessoa apertar o botão na moldura
- } else {
-   try{ show("workout"); }catch(eS){}
-   var cel=document.getElementById("celebrate");
-   if(cel) cel.classList.add("show");
+ try{
+  if(typeof currentDay==='undefined' || currentDay==null){ toast&&toast('Abra um treino primeiro'); return; }
+  if(typeof currentEx==='undefined' || currentEx==null){ toast&&toast('Abra um exercício primeiro'); return; }
+  var loadEl=document.getElementById("load");
+  var loadVal=loadEl?(+loadEl.value||0):0;
+  setExDone(currentDay, currentEx, true, loadVal);
+  try{ state.loads[progressKey(currentDay, currentEx)] = loadVal; }catch(eL){}
+  try{ recordMonthExercise(currentDay, currentEx); }catch(e){}
+  try{ save(); }catch(eSv){}
+  try{ renderWorkout(); }catch(eW){}
+  try{ renderHome(); }catch(eH){}
+  var d=days[currentDay];
+  var mainDone = false;
+  try{
+    mainDone = (typeof isDayMainDone==='function') ? !!isDayMainDone(currentDay)
+      : !!(d && d.exercises && d.exercises.slice(0,4).every(function(_,i){ return isExDone(currentDay,i); }));
+  }catch(eMD){ mainDone=false; }
+  if(mainDone){
+    try{ markDayMainDone(currentDay); }catch(eM){}
+    try{ recordMonthWorkout(currentDay); }catch(e){}
+    try{ renderHome(); }catch(eH2){}
+    // autoriza compartilhamento do dia
+    window.__htShareAllowed = true;
+    window.__htWeeklyShareActive = false;
+    window.__htShareToken = { reason:'day-complete', t: Date.now() };
+    window.__htBlockShareFromEvo = false;
+    try{ openDayCelebrate(); }catch(eO){ console.warn(eO); }
+  } else {
+    try{ show("workout"); }catch(eS){}
+    var cel=document.getElementById("celebrate");
+    if(cel){
+      cel.classList.add("show");
+      cel.style.display='grid';
+      cel.style.pointerEvents='auto';
+      cel.style.visibility='visible';
+    }
+  }
+ }catch(err){
+   try{ console.warn('[completeCurrent]', err); alert('Erro ao concluir: '+(err&&err.message||err)); }catch(e2){}
  }
 }
+window.completeCurrent = completeCurrent;
 function closeCelebrate(){document.getElementById("celebrate").classList.remove("show")}
 
 
@@ -3926,12 +3939,14 @@ function openDayCelebrate(){
     }catch(e){}
     var rankOk = !!(window.__htWeeklyShareActive);
     var explicit = !!window.__htShareAllowed;
-    // Só abre com flag explícita (completeCurrent ou ranking). dayOk sozinho NÃO basta.
-    if(!rankOk && !explicit){
+    var tokOk = !!(window.__htShareToken && window.__htShareToken.t && (Date.now()-window.__htShareToken.t) < 5*60*1000);
+    // Só abre com flag explícita (completeCurrent ou ranking)
+    if(!rankOk && !explicit && !tokOk){
       console.log('[HT] openDayCelebrate bloqueado — sem autorização explícita');
       return;
     }
     window.__htShareAllowed = true;
+    if(!window.__htShareToken) window.__htShareToken = { reason:'open', t: Date.now() };
   }catch(e){}
   const d = days[currentDay];
   if(!d) return;
@@ -11310,15 +11325,14 @@ function htOpenExercise(i){
 /* ---- Completar 4 principais → foto ---- */
 var _origCompleteCurrent = null;
 function htCompleteCurrent(){
-  // Chama a lógica original (já com 4 principais = verde + câmera)
-  if(_origCompleteCurrent) _origCompleteCurrent();
-  else if(typeof completeCurrent==='function' && !completeCurrent._htV32) completeCurrent();
   try{
-    if(typeof isDayMainDone==='function' && isDayMainDone(currentDay)){
-      try{ markDayMainDone(currentDay); }catch(eM){}
-      try{ if(typeof renderHome==='function') renderHome(); }catch(eR){}
+    // Preferir a função real de conclusão
+    if(typeof _origCompleteCurrent==='function'){
+      _origCompleteCurrent();
+    } else if(typeof completeCurrent==='function' && !completeCurrent._htV32){
+      completeCurrent();
     }
-  }catch(err){ console.warn('[HT V32] complete', err); }
+  }catch(err){ console.warn('[HT V32] complete', err); try{alert('Erro ao concluir exercício');}catch(e){} }
 }
 
 /* ---- Cronômetro robusto (tela bloqueada) ---- */
@@ -27840,6 +27854,121 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
   }, true);
 
   try{ console.log('[HT] Click unlock light — no freeze'); }catch(e){}
+})();
+</script>
+
+
+<script id="htWorkoutButtonsFix">
+(function(){
+  'use strict';
+  function bindWorkoutButtons(){
+    try{
+      // reexporta funções principais
+      if(typeof completeCurrent==='function') window.completeCurrent = completeCurrent;
+      if(typeof markSetDone==='function') window.markSetDone = markSetDone;
+      if(typeof startRestTimer==='function') window.startRestTimer = startRestTimer;
+      if(typeof onSeriesDotClick==='function') window.onSeriesDotClick = onSeriesDotClick;
+      if(typeof openExercise==='function') window.openExercise = openExercise;
+      if(typeof closeCelebrate==='function') window.closeCelebrate = closeCelebrate;
+      if(typeof openDayCelebrate==='function') window.openDayCelebrate = openDayCelebrate;
+
+      var doneBtn = document.getElementById('htBtnCompleteEx');
+      if(doneBtn && !doneBtn.__htBound){
+        doneBtn.__htBound = true;
+        doneBtn.addEventListener('click', function(ev){
+          ev.preventDefault();
+          ev.stopPropagation();
+          try{ window.completeCurrent(); }catch(e){ alert(e); }
+          return false;
+        }, true);
+      }
+      // botões de série / timer por seletor (caso onclick quebre)
+      var seriesBtns = document.querySelectorAll('.seriesBtns button');
+      seriesBtns.forEach(function(btn){
+        if(btn.__htBound) return;
+        btn.__htBound = true;
+        btn.addEventListener('click', function(ev){
+          try{
+            if(btn.classList.contains('restBtn') || (btn.textContent||'').indexOf('Descanso')>=0){
+              ev.preventDefault();
+              if(typeof window.startRestTimer==='function') window.startRestTimer();
+            } else if(btn.classList.contains('doneSetBtn') || (btn.textContent||'').indexOf('Série')>=0){
+              ev.preventDefault();
+              if(typeof window.markSetDone==='function') window.markSetDone();
+            }
+          }catch(e){ console.warn(e); }
+        }, true);
+      });
+    }catch(e){ console.warn('[HT bindWorkout]', e); }
+  }
+
+  // Garante que rest overlay fecha e não fica fantasma
+  function ensureRestCloseable(){
+    try{
+      var ov = document.getElementById('restOverlay');
+      if(!ov) return;
+      if(!ov.classList.contains('show')){
+        ov.style.display = 'none';
+        ov.style.pointerEvents = 'none';
+      }
+    }catch(e){}
+  }
+
+  // Fecha share residual sem token (leve, 1x ao carregar e ao mudar tela)
+  function hideUnauthorizedShare(){
+    try{
+      var tok = window.__htShareToken;
+      var ok = !!(window.__htShareAllowed || window.__htWeeklyShareActive || (tok && tok.t && Date.now()-tok.t < 5*60*1000));
+      var day = document.getElementById('dayCelebrate');
+      if(day && !ok){
+        day.classList.remove('show');
+        day.style.display = 'none';
+        day.style.pointerEvents = 'none';
+      }
+    }catch(e){}
+  }
+
+  function boot(){
+    bindWorkoutButtons();
+    hideUnauthorizedShare();
+    ensureRestCloseable();
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot, 100); });
+  else setTimeout(boot, 100);
+  setTimeout(boot, 800);
+  // rebind raro (não agressivo)
+  setInterval(function(){ bindWorkoutButtons(); ensureRestCloseable(); }, 6000);
+
+  if(typeof window.show==='function' && !window.show.__htWorkoutFix){
+    var prev = window.show;
+    window.show = function(id){
+      var r = prev.apply(this, arguments);
+      setTimeout(function(){
+        bindWorkoutButtons();
+        if(id==='detail'||id==='workout'||id==='home'){
+          // não limpa token fresco (acabou de concluir o dia)
+          try{
+            var tok=window.__htShareToken;
+            var fresh=tok&&tok.t&&(Date.now()-tok.t)<5000;
+            if(!fresh && id!=='detail'){ /* keep */ }
+            if(id==='workout'||id==='home'){
+              if(!fresh){
+                // só limpa share se não acabou de completar
+                var day=document.getElementById('dayCelebrate');
+                if(day && !day.classList.contains('show')){
+                  window.__htShareAllowed=false;
+                }
+              }
+            }
+          }catch(e){}
+        }
+      }, 40);
+      return r;
+    };
+    window.show.__htWorkoutFix = true;
+  }
+
+  try{ console.log('[HT] Workout buttons fix'); }catch(e){}
 })();
 </script>
 
