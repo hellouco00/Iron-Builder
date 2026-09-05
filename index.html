@@ -1864,13 +1864,25 @@ body:has(#authWelcome.active) #bottom {
       <a href="#" class="ht-share-link" target="_blank" rel="noopener" style="display:block;margin-top:2px;color:#ffbd3e;font-size:10px;word-break:break-all"></a>
     </div>
     <script>
-    document.addEventListener('DOMContentLoaded', function(){
-      document.querySelectorAll('.ht-share-link').forEach(function(a){
-        var url = (typeof getShareUrl==='function') ? getShareUrl() : (typeof APP_SHARE_URL!=='undefined' ? APP_SHARE_URL : (location.origin+location.pathname));
+    // Sincroniza os links "Conheça o aplicativo" (nome + link) com a config atual do admin.
+    // Antes isso só rodava 1x no DOMContentLoaded e nunca mais se atualizava quando o
+    // admin trocava nome/link depois — por isso ficava "preso" no valor padrão.
+    window.htSyncBottomShareLinks = function(){
+      var links = document.querySelectorAll('.ht-share-link');
+      if(!links.length) return;
+      var url = (typeof getShareUrl==='function') ? getShareUrl() : (typeof APP_SHARE_URL!=='undefined' ? APP_SHARE_URL : (location.origin+location.pathname));
+      var appName = (typeof getAppName==='function') ? getAppName() : 'Helton Training';
+      links.forEach(function(a, i){
         a.href = url;
-        if(!a.textContent || a.textContent.trim()===''){ a.textContent = url.replace(/^https?:\/\//,''); }
+        if(i===0){
+          // primeiro link mostra o nome do app (sempre atualizado, não só quando vazio)
+          a.textContent = '🏋️ ' + appName;
+        } else {
+          a.textContent = url.replace(/^https?:\/\//,'');
+        }
       });
-    });
+    };
+    document.addEventListener('DOMContentLoaded', window.htSyncBottomShareLinks);
     </script>
     <p class="dayCelebNote">O card inclui sua conquista, os exercícios concluídos e o acesso ao Helton Training. O link também é enviado junto ao compartilhamento.</p>
   </div>
@@ -3962,6 +3974,11 @@ document.getElementById('dayStatExercises').textContent=n;
     dayEl.style.visibility = 'visible';
     dayEl.style.pointerEvents = 'auto';
   }
+  // Re-sincroniza nome/link/dev do card e do rodapé "Conheça o aplicativo" toda vez
+  // que a tela de compartilhamento abre (openDayCelebrate não passa pelo window.show,
+  // então o auto-refresh de marca não disparava aqui antes).
+  try{ if(typeof window.gmApplyShareFooter==='function') window.gmApplyShareFooter(); }catch(eBrand){}
+  try{ if(typeof window.htSyncBottomShareLinks==='function') window.htSyncBottomShareLinks(); }catch(eBrand2){}
   // Moldura: re-aplica várias vezes após o layout (corrige moldura "bugada" na 1ª abertura)
   function htFixFrameLayout(){
     try{
@@ -18209,6 +18226,7 @@ if (tab === 'uso') {
         }
         document.documentElement.style.setProperty('--gm-primary', d2.masterConfig.primaryColor);
       } catch (e) {}
+      try { if (typeof window.gmApplyShareFooter === 'function') window.gmApplyShareFooter(); } catch (e) {}
       toast('Configurações salvas — acesso total aplicado');
       go(screenMasterDash);
     };
@@ -18722,6 +18740,7 @@ if (tab === 'uso') {
         }
       } catch (e) {}
       applyAppIdentityFromMaster();
+      try { if (typeof window.gmApplyShareFooter === 'function') window.gmApplyShareFooter(); } catch (e) {}
       live();
       toast('Identidade salva — prévia e app atualizados');
       go(screenMasterDash);
@@ -19129,6 +19148,7 @@ if (tab === 'uso') {
           if(cfg.link) state.branding.shareUrl = cfg.link;
         }
       }catch(e2){}
+      try{ if(typeof window.htSyncBottomShareLinks==='function') window.htSyncBottomShareLinks(); }catch(e3){}
     }catch(e){ console.warn('[gmApplyShareFooter]', e); }
   };
 
