@@ -3718,7 +3718,7 @@ const FRAME_ASSETS={"solo":[{"id":"solo_1","name":"Disciplina • Foco • Resul
 function makeExtraFrame(){ return null; }
 // Mantém APENAS molduras originais com arte PNG (remove extras SVG quebrados)
 (function cleanFrames(){
-  const ok = (f)=>/image\/(png|jpeg|jpg|webp)/i.test(String(f.asset||''));
+  const ok = (f)=>{var a=String(f.asset||'');return /\.(png|jpe?g|webp)(\?.*)?$/i.test(a) || /^data:image\/(png|jpeg|jpg|webp)/i.test(a);};
   if(FRAME_ASSETS.solo) FRAME_ASSETS.solo = FRAME_ASSETS.solo.filter(ok);
   if(FRAME_ASSETS.casal) FRAME_ASSETS.casal = FRAME_ASSETS.casal.filter(ok);
 })();
