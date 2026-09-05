@@ -3694,7 +3694,12 @@ function completeCurrent(){
    try{ markDayMainDone(currentDay); }catch(eM){}
    try{ recordMonthWorkout(currentDay); }catch(e){}
    try{ renderHome(); }catch(eH2){}
-   try{ window.__htShareAllowed = true; window.__htWeeklyShareActive = false; }catch(eA){}
+   try{
+     window.__htShareAllowed = true;
+     window.__htWeeklyShareActive = false;
+     if(typeof window.htGiveShareToken==='function') window.htGiveShareToken('day-complete');
+     else window.__htShareToken = { reason:'day-complete', t: Date.now() };
+   }catch(eA){}
    openDayCelebrate();
    // Câmera NÃO abre sozinha — só se a pessoa apertar o botão na moldura
  } else {
@@ -27409,241 +27414,385 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
 
 
 <!-- ===== HT SHARE GATE: compartilhamento só após 4 exercícios ou ranking liberado ===== -->
-<script id="htShareGateOnlyWhenAllowed">
+
+
+
+
+
+
+
+
+
+<script id="htFinalShareAndBfFix">
 (function(){
   'use strict';
-  function dayMainDone(){
-    try{
-      if(typeof isDayMainDone==='function' && typeof currentDay!=='undefined')
-        return !!isDayMainDone(currentDay);
-    }catch(e){}
-    return false;
+  var VER = 'HT-FINAL-2026-03';
+
+  /* ========== 1) COMPARTILHAMENTO: só com token explícito ========== */
+  // Token só é válido por 2 minutos após completar treino ou abrir ranking
+  window.__htShareToken = window.__htShareToken || null;
+
+  function giveShareToken(reason){
+    window.__htShareToken = { reason: reason || 'ok', t: Date.now() };
+    window.__htShareAllowed = true;
   }
-  function allowed(){
-    if(window.__htBlockShareFromEvo) return false;
-    // Admin / Master / edição de moldura: NUNCA compartilhamento
+  function clearShareToken(){
+    window.__htShareToken = null;
+    window.__htShareAllowed = false;
+    window.__htWeeklyShareActive = false;
+  }
+  function hasValidShareToken(){
+    var tok = window.__htShareToken;
+    if(!tok || !tok.t) return false;
+    if(Date.now() - tok.t > 5*60*1000){ clearShareToken(); return false; }
+    return true;
+  }
+
+  function panelOpen(){
     try{
       var ad = document.getElementById('admin');
-      if(ad && ad.classList.contains('active')) return false;
-      if(ad && ad.classList.contains('editor-open')) return false;
-      if(document.getElementById('htV36Studio') && document.getElementById('admin') && document.getElementById('admin').classList.contains('active')) return false;
-      var auth = document.getElementById('authAdminLogin');
-      if(auth && auth.classList.contains('active')) return false;
+      if(ad && (ad.classList.contains('active') || ad.classList.contains('editor-open'))) return 'admin';
+      var gm = document.getElementById('gmRoot');
+      if(gm){
+        var st = window.getComputedStyle(gm);
+        if(gm.classList.contains('show') || (st && st.display !== 'none' && st.visibility !== 'hidden' && gm.querySelector('.gmPanel, .gmShell, .gmWrap, [class*="gm"]'))){
+          // se gmRoot está visível na tela
+          if(gm.classList.contains('show')) return 'gm';
+          if(st.display !== 'none' && st.opacity !== '0' && gm.offsetParent !== null) return 'gm';
+        }
+      }
+      // auth admin login
+      var al = document.getElementById('authAdminLogin');
+      if(al && al.classList.contains('active')) return 'authAdmin';
     }catch(e){}
-    // Só flags explícitas — NÃO abrir só porque o dia está completo
-    if(window.__htShareAllowed) return true;
-    if(window.__htWeeklyShareActive) return true;
-    return false;
+    return null;
   }
-  function closeShare(force){
+
+  function hideShareHard(){
     try{
-      if(!force && allowed()) return;
       var day = document.getElementById('dayCelebrate');
       if(!day) return;
-      if(day.classList.contains('show') || day.style.display === 'flex'){
-        day.classList.remove('show');
-        day.style.display = 'none';
-        day.style.pointerEvents = 'none';
-        day.style.visibility = 'hidden';
-      }
+      day.classList.remove('show');
+      day.setAttribute('data-ht-share','0');
+      day.style.setProperty('display','none','important');
+      day.style.setProperty('visibility','hidden','important');
+      day.style.setProperty('pointer-events','none','important');
+      day.style.setProperty('opacity','0','important');
+      day.style.setProperty('z-index','-9999','important');
     }catch(e){}
   }
-  // Reescreve keepCelebrate helpers usados pelas câmeras
-  function wrapEnsure(){
-    var prev = window.htEnsureDayCelebrateOpen;
-    window.htEnsureDayCelebrateOpen = function(){
-      if(!allowed()){ closeShare(true); return; }
-      if(typeof prev === 'function'){
-        try{ return prev.apply(this, arguments); }catch(e){}
+
+  function showShareHard(){
+    try{
+      var day = document.getElementById('dayCelebrate');
+      if(!day) return;
+      day.setAttribute('data-ht-share','1');
+      day.classList.add('show');
+      day.style.setProperty('display','flex','important');
+      day.style.setProperty('visibility','visible','important');
+      day.style.setProperty('pointer-events','auto','important');
+      day.style.setProperty('opacity','1','important');
+      day.style.setProperty('z-index','90','important');
+    }catch(e){}
+  }
+
+  function police(){
+    var p = panelOpen();
+    if(p){
+      clearShareToken();
+      hideShareHard();
+      return;
+    }
+    var day = document.getElementById('dayCelebrate');
+    if(!day) return;
+    var wantsOpen = day.classList.contains('show') || day.getAttribute('data-ht-share')==='1';
+    if(wantsOpen && !hasValidShareToken()){
+      hideShareHard();
+    }
+  }
+
+  // Wrap completeCurrent to give token
+  function wrapComplete(){
+    if(typeof window.completeCurrent !== 'function' || window.completeCurrent.__htFinal) return;
+    var prev = window.completeCurrent;
+    window.completeCurrent = function(){
+      try{
+        // deixa o original decidir se dia está completo; se chamar openDayCelebrate, token já existe
+        var before = window.openDayCelebrate;
+        window.openDayCelebrate = function(){
+          giveShareToken('day-complete');
+          if(typeof before === 'function') return before.apply(this, arguments);
+        };
+        var r = prev.apply(this, arguments);
+        window.openDayCelebrate = before;
+        // se o original setou flags, garante token
+        if(window.__htShareAllowed) giveShareToken('day-complete');
+        return r;
+      }catch(e){
+        try{ return prev.apply(this, arguments); }catch(e2){}
       }
     };
+    window.completeCurrent.__htFinal = true;
   }
-  function wrapOpen(){
-    if(typeof window.openDayCelebrate !== 'function') return;
-    if(window.openDayCelebrate.__htGated) return;
-    var prev = window.openDayCelebrate;
-    window.openDayCelebrate = function(){
-      var dayOk = dayMainDone();
-      var rankOk = !!(window.__htWeeklyShareActive || window.__htShareAllowed);
-      if(!dayOk && !rankOk){
-        try{ console.log('[HT ShareGate] bloqueado'); }catch(e){}
-        return;
-      }
-      window.__htShareAllowed = true;
+
+  function wrapWeekly(){
+    if(typeof window.htOpenWeeklyCelebrate !== 'function' || window.htOpenWeeklyCelebrate.__htFinal) return;
+    var prev = window.htOpenWeeklyCelebrate;
+    window.htOpenWeeklyCelebrate = function(){
+      giveShareToken('ranking');
+      window.__htWeeklyShareActive = true;
       return prev.apply(this, arguments);
     };
-    window.openDayCelebrate.__htGated = true;
+    window.htOpenWeeklyCelebrate.__htFinal = true;
   }
-  // Observa tentativas de abrir dayCelebrate sem permissão
-  function watch(){
-    var day = document.getElementById('dayCelebrate');
-    if(!day || day.__htShareGateObs) return;
-    day.__htShareGateObs = true;
-    new MutationObserver(function(){
-      if(day.classList.contains('show') && !allowed()){
-        closeShare(true);
-      }
-    }).observe(day, {attributes:true, attributeFilter:['class','style']});
-  }
-  // Botão ranking: ao abrir share, autoriza
-  function wireRankBtn(){
-    var btn = document.getElementById('htRankShareBtn');
-    if(!btn || btn.__htShareGate) return;
-    btn.__htShareGate = true;
-    btn.addEventListener('click', function(){
-      try{ window.__htShareAllowed = true; window.__htWeeklyShareActive = true; }catch(e){}
-    }, true);
-  }
-  function boot(){
-    wrapEnsure();
-    wrapOpen();
-    watch();
-    wireRankBtn();
-  }
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot,100); });
-  else setTimeout(boot,100);
-  setInterval(function(){
-    try{
-      wrapEnsure(); wrapOpen(); wireRankBtn();
-      // se share aberto ilegalmente, fecha
-      if(!allowed()) closeShare(true);
-    }catch(e){}
-  }, 1200);
-  try{ console.log('[HT ShareGate] ativo — só 4 exercícios ou ranking'); }catch(e){}
-})();
-</script>
 
-
-<script id="htNeverShareOnAdmin">
-(function(){
-  function closeShareHard(){
-    try{
-      window.__htShareAllowed = false;
-      window.__htWeeklyShareActive = false;
-      var day = document.getElementById('dayCelebrate');
-      if(day){
-        day.classList.remove('show');
-        day.style.display = 'none';
-        day.style.pointerEvents = 'none';
-        day.style.visibility = 'hidden';
-      }
-    }catch(e){}
-  }
-  function isAdminView(){
-    try{
-      var ad = document.getElementById('admin');
-      if(ad && ad.classList.contains('active')) return true;
-      if(ad && ad.classList.contains('editor-open')) return true;
-    }catch(e){}
-    return false;
-  }
-  setInterval(function(){
-    if(isAdminView()) closeShareHard();
-  }, 600);
-  // Patch adminShowPanel
-  function patch(){
-    if(typeof window.adminShowPanel === 'function' && !window.adminShowPanel.__htNoShare){
-      var prev = window.adminShowPanel;
-      window.adminShowPanel = function(){
-        closeShareHard();
-        return prev.apply(this, arguments);
-      };
-      window.adminShowPanel.__htNoShare = true;
-    }
-    if(typeof window.buildStudio === 'function' && !window.buildStudio.__htNoShare){
-      var prevB = window.buildStudio;
-      window.buildStudio = function(){
-        closeShareHard();
-        return prevB.apply(this, arguments);
-      };
-      window.buildStudio.__htNoShare = true;
-    }
-  }
-  patch();
-  setInterval(patch, 1500);
-  try{ console.log('[HT] Never share on admin/master'); }catch(e){}
-})();
-</script>
-
-
-<script id="htShareNuclearBlock">
-(function(){
-  function isAdminNow(){
-    try{
-      var ad=document.getElementById('admin');
-      if(ad && (ad.classList.contains('active') || ad.classList.contains('editor-open'))) return true;
-      var gm=document.getElementById('gmRoot');
-      if(gm && gm.classList.contains('show')) return true;
-      // sessão master/admin sem estar no app aluno
-      if(typeof isAdminSession==='function' && isAdminSession()){
-        if(ad && ad.classList.contains('active')) return true;
-      }
-      try{
-        if(typeof getSession==='function'){
-          var s=getSession();
-          if(s && (s.role==='MASTER' || s.role==='ACADEMY_ADMIN') && gm && gm.classList.contains('show')) return true;
-        }
-      }catch(e2){}
-    }catch(e){}
-    return false;
-  }
-  function kill(){
-    try{
-      if(!isAdminNow() && !(window.__htBlockShareAlways)) {
-        // se não admin, só mata se não autorizado
-        if(window.__htShareAllowed || window.__htWeeklyShareActive) return;
-      }
-      if(isAdminNow()){
-        window.__htShareAllowed = false;
-        window.__htWeeklyShareActive = false;
-      }
-      var day=document.getElementById('dayCelebrate');
-      if(!day) return;
-      if(isAdminNow() || !(window.__htShareAllowed || window.__htWeeklyShareActive)){
-        day.classList.remove('show');
-        day.classList.add('ht-blocked-by-admin');
-        day.style.setProperty('display','none','important');
-        day.style.setProperty('visibility','hidden','important');
-        day.style.setProperty('pointer-events','none','important');
-        day.style.setProperty('opacity','0','important');
-        day.style.setProperty('z-index','-1','important');
-      } else {
-        day.classList.remove('ht-blocked-by-admin');
-      }
-    }catch(e){}
-  }
-  // Override global forcers
-  window.htEnsureDayCelebrateOpen = function(){
-    if(isAdminNow()) { kill(); return; }
-    if(!(window.__htShareAllowed || window.__htWeeklyShareActive)) { kill(); return; }
-    try{
-      var day=document.getElementById('dayCelebrate');
-      if(!day) return;
-      day.classList.remove('ht-blocked-by-admin');
-      day.classList.add('show');
-      day.style.display='flex';
-      day.style.visibility='visible';
-      day.style.pointerEvents='auto';
-      day.style.opacity='1';
-      day.style.zIndex='90';
-    }catch(e){}
-  };
-  var prevOpen = window.openDayCelebrate;
-  if(typeof prevOpen==='function'){
+  function wrapOpenDay(){
+    if(typeof window.openDayCelebrate !== 'function') return;
+    if(window.openDayCelebrate.__htFinal) return;
+    var prev = window.openDayCelebrate;
     window.openDayCelebrate = function(){
-      if(isAdminNow()){ kill(); return; }
-      if(!(window.__htShareAllowed || window.__htWeeklyShareActive)){
-        // completeCurrent sets flag before calling
-        // allow only if flag set
-        kill(); return;
+      if(panelOpen()){ hideShareHard(); return; }
+      if(!hasValidShareToken() && !window.__htShareAllowed && !window.__htWeeklyShareActive){
+        hideShareHard();
+        return;
       }
-      return prevOpen.apply(this, arguments);
+      giveShareToken(window.__htShareToken && window.__htShareToken.reason || 'open');
+      var r = prev.apply(this, arguments);
+      showShareHard();
+      return r;
+    };
+    window.openDayCelebrate.__htFinal = true;
+  }
+
+  function wrapEnsure(){
+    window.htEnsureDayCelebrateOpen = function(){
+      if(panelOpen()){ hideShareHard(); return; }
+      if(!hasValidShareToken()){ hideShareHard(); return; }
+      showShareHard();
     };
   }
-  setInterval(kill, 400);
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', kill);
-  else kill();
-  try{ console.log('[HT] Share nuclear block on admin'); }catch(e){}
+
+  function wrapClose(){
+    if(typeof window.closeDayCelebrate === 'function' && !window.closeDayCelebrate.__htFinal){
+      var prev = window.closeDayCelebrate;
+      window.closeDayCelebrate = function(){
+        clearShareToken();
+        hideShareHard();
+        try{ return prev.apply(this, arguments); }catch(e){}
+      };
+      window.closeDayCelebrate.__htFinal = true;
+    }
+  }
+
+  function wrapShow(){
+    if(typeof window.show !== 'function' || window.show.__htFinalShare) return;
+    var prev = window.show;
+    window.show = function(id){
+      try{
+        if(id === 'admin' || id === 'authAdminLogin' || id === 'authWelcome'){
+          clearShareToken();
+          hideShareHard();
+        }
+        if(id === 'evolution' || id === 'nutrition' || id === 'home' || id === 'profile' || id === 'cardio'){
+          // troca de aba normal fecha share
+          clearShareToken();
+          hideShareHard();
+        }
+      }catch(e){}
+      return prev.apply(this, arguments);
+    };
+    window.show.__htFinalShare = true;
+  }
+
+  // Neutraliza keepCelebrate*
+  function neuterKeep(){
+    window.keepCelebrateOpen = function(){ if(hasValidShareToken() && !panelOpen()) showShareHard(); };
+    window.keepCelebrate = function(){ if(hasValidShareToken() && !panelOpen()) showShareHard(); };
+  }
+
+  // MutationObserver: qualquer tentativa de abrir sem token é morta
+  function observe(){
+    var day = document.getElementById('dayCelebrate');
+    if(!day || day.__htFinalObs) return;
+    day.__htFinalObs = true;
+    new MutationObserver(function(){
+      if(panelOpen() || !hasValidShareToken()){
+        if(day.classList.contains('show')) hideShareHard();
+      }
+    }).observe(day, { attributes:true, attributeFilter:['class','style'] });
+  }
+
+  /* ========== 2) BF CALCULATOR — independente ========== */
+  function parseNum(v){
+    if(v==null) return NaN;
+    var s = String(v).trim().replace(/\s/g,'');
+    if(!s) return NaN;
+    if(s.indexOf(',')>=0 && s.indexOf('.')>=0){
+      s = s.replace(/\./g,'').replace(',', '.');
+    } else {
+      s = s.replace(',', '.');
+    }
+    s = s.replace(/[^0-9.+-]/g,'');
+    var n = parseFloat(s);
+    return n;
+  }
+
+  function ensureBfCard(){
+    var pane = document.getElementById('htPaneExames');
+    if(!pane) return;
+    var card = document.getElementById('htBfCalcCard');
+    if(!card){
+      card = document.createElement('div');
+      card.id = 'htBfCalcCard';
+      card.className = 'htEvoSection';
+      card.innerHTML =
+        '<h3>🧮 Calculadora de BF (% gordura)</h3>'+
+        '<p style="font-size:11px;color:#9fb0c5;margin:0 0 10px;line-height:1.4">Use <b>ponto ou vírgula</b>. Altura: <b>1,72</b> ou <b>172</b>. Depois toque em Calcular BF.</p>'+
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'+
+          '<input id="htBfAge" type="text" inputmode="decimal" placeholder="Idade" style="width:100%;padding:12px;background:#050c16;border:1px solid #30415d;color:#fff;border-radius:12px">'+
+          '<input id="htBfHeight" type="text" inputmode="decimal" placeholder="Altura 1,72 ou 172" style="width:100%;padding:12px;background:#050c16;border:1px solid #30415d;color:#fff;border-radius:12px">'+
+          '<input id="htBfWeight" type="text" inputmode="decimal" placeholder="Peso kg" style="width:100%;padding:12px;background:#050c16;border:1px solid #30415d;color:#fff;border-radius:12px">'+
+          '<select id="htBfGender" style="width:100%;padding:12px;background:#050c16;border:1px solid #30415d;color:#fff;border-radius:12px"><option value="masculino">Masculino</option><option value="feminino">Feminino</option></select>'+
+          '<input id="htBfWaist" type="text" inputmode="decimal" placeholder="Cintura cm" style="width:100%;padding:12px;background:#050c16;border:1px solid #30415d;color:#fff;border-radius:12px">'+
+          '<input id="htBfNeck" type="text" inputmode="decimal" placeholder="Pescoço cm" style="width:100%;padding:12px;background:#050c16;border:1px solid #30415d;color:#fff;border-radius:12px">'+
+          '<input id="htBfHip" type="text" inputmode="decimal" placeholder="Quadril cm (mulheres)" style="width:100%;padding:12px;background:#050c16;border:1px solid #30415d;color:#fff;border-radius:12px;grid-column:1/-1">'+
+        '</div>'+
+        '<button type="button" class="htBtn" id="htBfCalcBtn" style="width:100%">Calcular BF</button>'+
+        '<div id="htBfResult" style="display:none;margin-top:12px;padding:14px;border-radius:14px;background:#0a1a12;border:1px solid #20e08355;text-align:center"></div>';
+      pane.insertBefore(card, pane.firstChild);
+    }
+    // rewire always
+    var btn = document.getElementById('htBfCalcBtn');
+    if(btn){
+      btn.onclick = function(ev){
+        if(ev){ ev.preventDefault(); ev.stopPropagation(); }
+        clearShareToken(); hideShareHard();
+        runBf();
+        return false;
+      };
+    }
+    // nunca type=number
+    ['htBfAge','htBfHeight','htBfWeight','htBfWaist','htBfNeck','htBfHip'].forEach(function(id){
+      var el = document.getElementById(id);
+      if(!el) return;
+      try{
+        el.setAttribute('type','text');
+        el.setAttribute('inputmode','decimal');
+        el.removeAttribute('min'); el.removeAttribute('max'); el.removeAttribute('step');
+      }catch(e){}
+    });
+  }
+
+  function val(id){
+    var el = document.getElementById(id);
+    return el ? parseNum(el.value) : NaN;
+  }
+
+  function runBf(){
+    var log10 = Math.log10 || function(x){ return Math.log(x)/Math.LN10; };
+    var age = val('htBfAge'); if(!isFinite(age) || age<=0) age = 30;
+    var height = val('htBfHeight');
+    var weight = val('htBfWeight');
+    var waist = val('htBfWaist');
+    var neck = val('htBfNeck');
+    var hip = val('htBfHip');
+    var gEl = document.getElementById('htBfGender');
+    var isF = gEl && gEl.value === 'feminino';
+    var box = document.getElementById('htBfResult');
+    if(!box) return;
+
+    // altura em metros → cm
+    if(isFinite(height) && height > 0 && height < 3) height = height * 100;
+
+    if(!isFinite(height) || height < 100){
+      box.style.display = 'block';
+      box.innerHTML = '<b style="color:#ff9dc8">Informe a altura (ex: 1,72 ou 172).</b>';
+      return;
+    }
+
+    var bf = null, method = '';
+    try{
+      if(isFinite(waist) && isFinite(neck) && waist > neck){
+        if(isF){
+          if(isFinite(hip) && hip > 0){
+            bf = 495/(1.29579 - 0.35004*log10(waist+hip-neck) + 0.22100*log10(height)) - 450;
+            method = 'US Navy (cintura + pescoço + quadril)';
+          }
+        } else {
+          bf = 495/(1.0324 - 0.19077*log10(waist-neck) + 0.15456*log10(height)) - 450;
+          method = 'US Navy (cintura + pescoço)';
+        }
+        if(!isFinite(bf) || bf < 2 || bf > 70) bf = null;
+      }
+    }catch(e){ bf = null; }
+
+    if(bf === null){
+      if(!isFinite(weight) || weight < 25){
+        box.style.display = 'block';
+        box.innerHTML = '<b style="color:#ff9dc8">Informe o peso (kg) ou cintura e pescoço.</b>';
+        return;
+      }
+      var hM = height/100;
+      var bmi = weight/(hM*hM);
+      var sex = isF ? 0 : 1;
+      bf = 1.20*bmi + 0.23*age - 10.8*sex - 5.4;
+      method = 'Estimativa por IMC (adicione cintura e pescoço para mais precisão)';
+      if(!isFinite(bf)){
+        box.style.display='block';
+        box.innerHTML='<b style="color:#ff9dc8">Não foi possível calcular.</b>';
+        return;
+      }
+    }
+
+    bf = Math.round(bf*10)/10;
+    var cat='ok', catLabel='Adequado', color='#20e083';
+    if(isF){
+      if(bf>=32){ cat='bad'; catLabel='Alto'; color='#f04f4f'; }
+      else if(bf>=25){ cat='warn'; catLabel='Atenção'; color='#ffbd3e'; }
+      else if(bf<14){ cat='warn'; catLabel='Muito baixo'; color='#ffbd3e'; }
+    } else {
+      if(bf>=25){ cat='bad'; catLabel='Alto'; color='#f04f4f'; }
+      else if(bf>=18){ cat='warn'; catLabel='Atenção'; color='#ffbd3e'; }
+      else if(bf<6){ cat='warn'; catLabel='Muito baixo'; color='#ffbd3e'; }
+    }
+    box.style.display='block';
+    box.style.borderColor = color+'55';
+    box.innerHTML =
+      '<div style="font-size:12px;color:#9fb0c5;margin-bottom:4px">Seu BF estimado</div>'+
+      '<div style="font-size:36px;font-weight:950;color:'+color+';line-height:1">'+bf+'%</div>'+
+      '<div style="margin-top:6px;font-size:12px;font-weight:900;color:'+color+'">'+catLabel+'</div>'+
+      '<div style="margin-top:10px;font-size:10px;color:#9fb0c5;line-height:1.45">'+method+'<br>Altura usada: '+Math.round(height)+' cm</div>';
+
+    try{
+      if(typeof htEnsureState==='function') htEnsureState();
+      if(typeof state!=='undefined' && state){
+        state.evolution = state.evolution || {};
+        state.evolution.bodyFat = bf;
+        state.evolution.bodyFatMethod = method;
+        if(typeof save==='function') save();
+      }
+      if(typeof toast==='function') toast('BF: '+bf+'%');
+    }catch(e){}
+  }
+
+  window.htFinalRunBf = runBf;
+  window.htGiveShareToken = giveShareToken;
+  window.htClearShareToken = clearShareToken;
+
+  function boot(){
+    wrapComplete(); wrapWeekly(); wrapOpenDay(); wrapEnsure(); wrapClose(); wrapShow();
+    neuterKeep(); observe(); police(); ensureBfCard();
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot,50); });
+  else setTimeout(boot,50);
+  setInterval(function(){
+    try{
+      wrapComplete(); wrapWeekly(); wrapOpenDay(); wrapEnsure(); wrapShow();
+      neuterKeep(); observe(); police(); ensureBfCard();
+    }catch(e){}
+  }, 800);
+
+  try{ console.log('['+VER+'] share token + BF final'); }catch(e){}
 })();
 </script>
 
