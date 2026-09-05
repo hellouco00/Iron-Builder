@@ -23723,7 +23723,7 @@ console.log("[HT] Catraca: onclick inline only (global capture disabled)");
     </div>
     <small style="display:block;margin-top:6px;color:#8ea0b8;font-size:10px">Lado — perfil, mesma distância</small>
 
-    <button class="htBtn green" id="htSavePhotosBtn" style="display:none" onclick="htSavePhotoCycle()">✅ Salvar fotos deste ciclo</button>
+    <button type="button" class="htBtn green" id="htSavePhotosBtn" style="display:none" onclick="try{window.htSavePhotoCycle()}catch(e){alert(e)}">✅ Salvar fotos deste ciclo</button>
   </div>
 
   <div class="htEvoSection">
@@ -24304,43 +24304,142 @@ function htCompressPhotoDataUrl(dataUrl, maxSide, quality, cb){
   }catch(e){ cb(dataUrl); }
 }
 function htSavePhotoCycle(){
-  if(!htTempPhotos.front || !htTempPhotos.side){ if(typeof toast==='function') toast('Tire as duas fotos (frente e lado).'); return; }
-  htEnsureState();
-  var m=(state.evolution&&state.evolution.measures)||{};
-  var p=state.profile||{};
-  // Comprime para caber no storage e continuar aparecendo
-  htCompressPhotoDataUrl(htTempPhotos.front, 900, 0.72, function(frontSmall){
-    htCompressPhotoDataUrl(htTempPhotos.side, 900, 0.72, function(sideSmall){
-      var entry = {
-        date:Date.now(),
-        front:frontSmall,
-        side:sideSmall,
-        weight:p.weight!=null?Number(p.weight):null,
-        height:p.height!=null?Number(p.height):null,
-        age:p.age!=null?Number(p.age):null,
-        gender:p.gender||null,
-        waist:m.waist!=null?Number(m.waist):null,
-        neck:m.neck!=null?Number(m.neck):null,
-        hip:m.hip!=null?Number(m.hip):null,
-        chest:m.chest!=null?Number(m.chest):null,
-        shoulders:m.shoulders!=null?Number(m.shoulders):(m.ombro!=null?Number(m.ombro):null),
-        arm:m.arm!=null?Number(m.arm):(m.braco!=null?Number(m.braco):null),
-        bodyFat:(state.evolution&&state.evolution.bodyFat)!=null?Number(state.evolution.bodyFat):null
-      };
-      state.photos.history=state.photos.history||[];
-      state.photos.history.push(entry);
-      // guarda também "lastSaved" para sempre exibir no quadro
-      state.photos.lastSaved={front:frontSmall, side:sideSmall, date:entry.date};
-      state.photos.draft={};
-      var days2 = HT_FREQ_DAYS[state.photos.frequency]||7;
-      state.photos.nextAllowed = Date.now() + days2*24*60*60*1000;
-      try{ save(); }catch(e){ console.warn(e); }
-      if(typeof toast==='function') toast('Fotos salvas! Elas ficam no comparativo. Próximo ciclo em '+days2+' dias.');
-      htTempPhotos={front:null,side:null};
-      htRenderPhotoScreen();
+  try{
+    // Garante objetos
+    if(typeof window.htTempPhotos === 'undefined' || !window.htTempPhotos){
+      window.htTempPhotos = {front:null, side:null};
+    }
+    // Sincroniza var global e window (scripts de câmera usam os dois)
+    try{
+      if(typeof htTempPhotos !== 'undefined' && htTempPhotos){
+        if(htTempPhotos.front && !window.htTempPhotos.front) window.htTempPhotos.front = htTempPhotos.front;
+        if(htTempPhotos.side && !window.htTempPhotos.side) window.htTempPhotos.side = htTempPhotos.side;
+        if(window.htTempPhotos.front && !htTempPhotos.front) htTempPhotos.front = window.htTempPhotos.front;
+        if(window.htTempPhotos.side && !htTempPhotos.side) htTempPhotos.side = window.htTempPhotos.side;
+      }
+    }catch(eSync){}
+
+    var front = null, side = null;
+    try{ front = (typeof htTempPhotos !== 'undefined' && htTempPhotos && htTempPhotos.front) || (window.htTempPhotos && window.htTempPhotos.front) || null; }catch(e){}
+    try{ side  = (typeof htTempPhotos !== 'undefined' && htTempPhotos && htTempPhotos.side)  || (window.htTempPhotos && window.htTempPhotos.side)  || null; }catch(e){}
+
+    // Fallback: draft no state
+    try{
+      if(typeof htEnsureState === 'function') htEnsureState();
+      if(typeof state !== 'undefined' && state && state.photos && state.photos.draft){
+        if(!front) front = state.photos.draft.front || null;
+        if(!side) side = state.photos.draft.side || null;
+      }
+    }catch(e){}
+
+    // Fallback: preview na tela
+    try{
+      var fp = document.getElementById('htFrontPreview');
+      var sp = document.getElementById('htSidePreview');
+      if(!front && fp && fp.src && fp.src.indexOf('data:') === 0) front = fp.src;
+      if(!side && sp && sp.src && sp.src.indexOf('data:') === 0) side = sp.src;
+    }catch(e){}
+
+    if(!front || !side){
+      if(typeof toast === 'function') toast('Tire as duas fotos (frente e lado).');
+      else alert('Tire as duas fotos (frente e lado).');
+      return;
+    }
+
+    // Atualiza ambos os objetos
+    try{ if(typeof htTempPhotos !== 'undefined'){ htTempPhotos.front = front; htTempPhotos.side = side; } }catch(e){}
+    window.htTempPhotos = {front: front, side: side};
+
+    if(typeof htEnsureState === 'function') htEnsureState();
+    else if(typeof state === 'undefined' || !state){ alert('Estado do app indisponível'); return; }
+
+    var m = (state.evolution && state.evolution.measures) || {};
+    var p = state.profile || {};
+    var btn = document.getElementById('htSavePhotosBtn');
+    if(btn){ btn.disabled = true; btn.textContent = 'Salvando…'; }
+
+    function finishSave(frontSmall, sideSmall){
+      try{
+        var entry = {
+          date: Date.now(),
+          front: frontSmall,
+          side: sideSmall,
+          weight: p.weight != null ? Number(p.weight) : null,
+          height: p.height != null ? Number(p.height) : null,
+          age: p.age != null ? Number(p.age) : null,
+          gender: p.gender || null,
+          waist: m.waist != null ? Number(m.waist) : null,
+          neck: m.neck != null ? Number(m.neck) : null,
+          hip: m.hip != null ? Number(m.hip) : null,
+          chest: m.chest != null ? Number(m.chest) : null,
+          shoulders: m.shoulders != null ? Number(m.shoulders) : (m.ombro != null ? Number(m.ombro) : null),
+          arm: m.arm != null ? Number(m.arm) : (m.braco != null ? Number(m.braco) : null),
+          bodyFat: (state.evolution && state.evolution.bodyFat) != null ? Number(state.evolution.bodyFat) : null
+        };
+        state.photos = state.photos || {};
+        state.photos.history = state.photos.history || [];
+        state.photos.history.push(entry);
+        // limita histórico para não estourar localStorage
+        while(state.photos.history.length > 8) state.photos.history.shift();
+        state.photos.lastSaved = {front: frontSmall, side: sideSmall, date: entry.date};
+        state.photos.draft = {};
+        var days2 = (typeof HT_FREQ_DAYS !== 'undefined' && HT_FREQ_DAYS[state.photos.frequency]) || 7;
+        state.photos.nextAllowed = Date.now() + days2 * 24 * 60 * 60 * 1000;
+
+        var saved = false;
+        try{
+          if(typeof save === 'function') save();
+          saved = true;
+        }catch(eSave){
+          // Quota: tira fotos antigas e tenta de novo
+          try{
+            console.warn('[htSavePhotoCycle] save fail', eSave);
+            if(state.photos.history.length > 2){
+              state.photos.history = state.photos.history.slice(-2);
+              if(typeof save === 'function') save();
+              saved = true;
+            }
+          }catch(e2){
+            try{
+              // último recurso: só lastSaved sem history grande
+              state.photos.history = [entry];
+              if(typeof save === 'function') save();
+              saved = true;
+            }catch(e3){
+              if(typeof toast === 'function') toast('Sem espaço para salvar. Apague fotos antigas ou use menos qualidade.');
+              else alert('Sem espaço no aparelho para salvar as fotos.');
+            }
+          }
+        }
+
+        if(saved){
+          if(typeof toast === 'function') toast('Fotos salvas! Elas ficam no comparativo. Próximo ciclo em '+days2+' dias.');
+          else alert('Fotos salvas!');
+        }
+
+        try{ htTempPhotos = {front:null, side:null}; }catch(e){}
+        window.htTempPhotos = {front:null, side:null};
+        try{ if(typeof htRenderPhotoScreen === 'function') htRenderPhotoScreen(); }catch(e){}
+        try{ if(typeof htRenderPhotoCompare === 'function') htRenderPhotoCompare(); }catch(e){}
+      }catch(err){
+        try{ console.warn(err); alert('Erro ao salvar fotos: '+(err && err.message || err)); }catch(e){}
+      }finally{
+        if(btn){ btn.disabled = false; btn.textContent = '✅ Salvar fotos deste ciclo'; }
+      }
+    }
+
+    // Comprime (com fallback se compress falhar)
+    var compress = (typeof htCompressPhotoDataUrl === 'function') ? htCompressPhotoDataUrl : function(d,_,__,cb){ cb(d); };
+    compress(front, 900, 0.72, function(frontSmall){
+      compress(side, 900, 0.72, function(sideSmall){
+        finishSave(frontSmall || front, sideSmall || side);
+      });
     });
-  });
+  }catch(err){
+    try{ console.warn('[htSavePhotoCycle]', err); alert('Erro ao salvar: '+(err && err.message || err)); }catch(e){}
+  }
 }
+
 function htRenderPhotoCompare(){
   htEnsureState();
   var hist=state.photos.history||[];
@@ -24716,7 +24815,7 @@ window.htSetPlan=htSetPlan; window.htOpenNutritionGated=htOpenNutritionGated; wi
 window.htOpenRankingGated=htOpenRankingGated; window.htAnalyzeExams=htAnalyzeExams; window.htSwitchEvoTab=htSwitchEvoTab;
 window.htGoToNutritionFromEvo=htGoToNutritionFromEvo; window.htToggleAllergy=htToggleAllergy; window.htSetMealsCount=htSetMealsCount;
 window.htAutoAssembleAll=htAutoAssembleAll; window.htOpenSwap=htOpenSwap; window.htDoSwap=htDoSwap;
-window.htSetPhotoFrequency=htSetPhotoFrequency; window.htHandlePhoto=htHandlePhoto; window.htSavePhotoCycle=htSavePhotoCycle;
+window.htSetPhotoFrequency=htSetPhotoFrequency; window.htHandlePhoto=htHandlePhoto; window.htSavePhotoCycle=htSavePhotoCycle; window.htSavePhotoCycle = htSavePhotoCycle;
 window.htRenderPlans=htRenderPlans; window.htRenderPhotoScreen=htRenderPhotoScreen; window.htRenderRanking=htRenderRanking;
 window.htOpenWeeklyCelebrate=htOpenWeeklyCelebrate; window.htConfirmPostRanking=htConfirmPostRanking; window.htWeekModalAnswer=htWeekModalAnswer;
 
@@ -27616,6 +27715,32 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
     window.show.__htCompleteWorking=true;
   }
   try{ console.log('[HT] completeCurrent da versão que funcionava'); }catch(e){}
+})();
+</script>
+
+
+<script id="htSavePhotosOnlyFix">
+(function(){
+  function wire(){
+    try{
+      if(typeof htSavePhotoCycle === 'function') window.htSavePhotoCycle = htSavePhotoCycle;
+      var btn = document.getElementById('htSavePhotosBtn');
+      if(!btn || btn.__htSaveWired) return;
+      btn.__htSaveWired = true;
+      btn.addEventListener('click', function(ev){
+        try{ ev.preventDefault(); ev.stopPropagation(); }catch(e){}
+        try{
+          if(typeof window.htSavePhotoCycle === 'function') window.htSavePhotoCycle();
+          else if(typeof htSavePhotoCycle === 'function') htSavePhotoCycle();
+          else alert('Função de salvar fotos não encontrada');
+        }catch(e){ alert(e); }
+        return false;
+      });
+    }catch(e){}
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(wire,100); });
+  else setTimeout(wire,100);
+  setInterval(wire, 2000);
 })();
 </script>
 
