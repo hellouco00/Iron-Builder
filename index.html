@@ -1001,6 +1001,23 @@ body:has(#authWelcome.active) #bottom {
   user-select:none;
 }
 </style>
+
+<style id="htKillShareOnAdmin">
+/* Compartilhamento NUNCA sobrepõe Master (gmRoot) nem Admin */
+body:has(#admin.screen.active) #dayCelebrate,
+body:has(#admin.editor-open) #dayCelebrate,
+body:has(#gmRoot.show) #dayCelebrate,
+#gmRoot.show ~ #dayCelebrate,
+#admin.screen.active ~ * #dayCelebrate,
+#dayCelebrate.ht-blocked-by-admin {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  opacity: 0 !important;
+  z-index: -1 !important;
+}
+</style>
+
 </head>
 <body>
 <div class="app">
@@ -3880,14 +3897,11 @@ function openDayCelebrate(){
       var ad=document.getElementById('admin');
       if(ad && (ad.classList.contains('active')||ad.classList.contains('editor-open'))) return;
     }catch(e){}
-    var rankOk = !!(window.__htWeeklyShareActive || window.__htShareAllowed);
-    var dayOk = false;
-    try{
-      if(typeof isDayMainDone==='function' && typeof currentDay!=='undefined') dayOk = !!isDayMainDone(currentDay);
-    }catch(e){}
-    // openDayCelebrate só com flag explícita OU dia completo (setado em completeCurrent)
-    if(!rankOk && !dayOk && !window.__htShareAllowed){
-      console.log('[HT] openDayCelebrate bloqueado');
+    var rankOk = !!(window.__htWeeklyShareActive);
+    var explicit = !!window.__htShareAllowed;
+    // Só abre com flag explícita (completeCurrent ou ranking). dayOk sozinho NÃO basta.
+    if(!rankOk && !explicit){
+      console.log('[HT] openDayCelebrate bloqueado — sem autorização explícita');
       return;
     }
     window.__htShareAllowed = true;
@@ -4458,8 +4472,15 @@ function openShareCameraInApp(){
         }
         if(typeof setPhotoChrome==='function') setPhotoChrome(true);
         if(typeof toast==='function') toast('Foto pronta — arraste para enquadrar');
-        var day = document.getElementById('dayCelebrate');
-        if(day){ day.classList.add('show'); day.style.display='flex'; day.style.pointerEvents='auto'; }
+        // Só reabre compartilhamento se já autorizado (nunca no Master/Admin)
+        try{
+          var ad=document.getElementById('admin');
+          var adminOn=ad && (ad.classList.contains('active')||ad.classList.contains('editor-open'));
+          if(!adminOn && (window.__htShareAllowed || window.__htWeeklyShareActive)){
+            var day = document.getElementById('dayCelebrate');
+            if(day){ day.classList.add('show'); day.style.display='flex'; day.style.pointerEvents='auto'; }
+          }
+        }catch(eDay){}
       }catch(e){
         console.warn(e);
         if(typeof toast==='function') toast('Erro ao capturar. Use a Galeria.');
@@ -24488,10 +24509,11 @@ function htOpenWeeklyCelebrate(){
   if(img){ img.style.display='none'; try{img.removeAttribute('src');}catch(e){} }
   if(ph) ph.style.display='flex';
   try{ setPhotoChrome(false); }catch(e){}
-  var dayEl=document.getElementById('dayCelebrate');
-  if(dayEl){ dayEl.classList.add('show'); dayEl.style.display='flex'; dayEl.style.visibility='visible'; dayEl.style.pointerEvents='auto'; }
-  try{ if(typeof renderFrameStrip==='function') renderFrameStrip(); if(typeof selectFrame==='function') selectFrame(currentFrameId); }catch(e){}
   window.__htWeeklyShareActive = true;
+  window.__htShareAllowed = true;
+  var dayEl=document.getElementById('dayCelebrate');
+  if(dayEl){ dayEl.classList.remove('ht-blocked-by-admin'); dayEl.classList.add('show'); dayEl.style.display='flex'; dayEl.style.visibility='visible'; dayEl.style.pointerEvents='auto'; }
+  try{ if(typeof renderFrameStrip==='function') renderFrameStrip(); if(typeof selectFrame==='function') selectFrame(currentFrameId); }catch(e){}
   htInjectPostRankButton();
 }
 function htInjectPostRankButton(){
@@ -25389,9 +25411,9 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
       '<h3>🧮 Calculadora de BF (% gordura)</h3>'+
       '<p style="font-size:11px;color:#9fb0c5;margin:0 0 10px;line-height:1.4">Preencha os campos e toque em <b>Calcular BF</b>. Com cintura e pescoço o cálculo usa o método US Navy (mais preciso). Sem medidas, usa estimativa por IMC.</p>'+
       '<div class="htEvoGrid" style="margin-bottom:8px">'+
-        '<input id="htBfAge" type="text" inputmode="decimal" placeholder="Idade (anos)">'+
-        '<input id="htBfHeight" type="text" inputmode="decimal" autocomplete="off" placeholder="Altura: 1.72 ou 172">'+
-        '<input id="htBfWeight" type="text" inputmode="decimal" placeholder="Peso (kg)">'+
+        '<input id="htBfAge" type="text" inputmode="decimal" enterkeyhint="next" placeholder="Idade (anos)" style="width:100%;padding:12px;background:#050c16;border:1px solid #30415d;color:#fff;border-radius:12px">'+
+        '<input id="htBfHeight" type="text" inputmode="decimal" enterkeyhint="next" placeholder="Altura: 1,72 ou 172" style="width:100%;padding:12px;background:#050c16;border:1px solid #30415d;color:#fff;border-radius:12px">'+
+        '<input id="htBfWeight" type="text" inputmode="decimal" enterkeyhint="next" placeholder="Peso (kg) ex: 75,5" style="width:100%;padding:12px;background:#050c16;border:1px solid #30415d;color:#fff;border-radius:12px">'+
         '<select id="htBfGender" style="width:100%;padding:12px;background:#050c16;border:1px solid #30415d;color:#fff;border-radius:12px">'+
           '<option value="masculino">Masculino</option>'+
           '<option value="feminino">Feminino</option>'+
@@ -25429,12 +25451,12 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
           return false;
         }
       });
-      // Permite digitar ponto e vírgula livremente
-      el.addEventListener('input', function(){
-        var v = String(el.value || '');
-        // não bloquear ponto enquanto digita
-        var cleaned = v.replace(/[^0-9.,]/g,'');
-        if(cleaned !== v) el.value = cleaned;
+      // Não filtra durante a digitação (deixa ponto e vírgula livres no celular)
+      el.addEventListener('blur', function(){
+        // só normaliza ao sair do campo
+        var v = String(el.value || '').trim();
+        if(!v) return;
+        // mantém como o usuário digitou; parse acontece no cálculo
       });
     });
 
@@ -25463,38 +25485,45 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
     set('htEvoWaist', m.waist); set('htEvoNeck', m.neck); set('htEvoHip', m.hip);
   }
 
+  if(!Math.log10){ Math.log10 = function(x){ return Math.log(x) / Math.LN10; }; }
+  function parseBRNumber(val){
+    if(val==null) return 0;
+    var raw = String(val).trim();
+    if(!raw) return 0;
+    // "1,72" ou "1.72" ou "75,5"
+    raw = raw.replace(/\s/g,'');
+    // se tem vírgula e ponto, assume ponto=milhar e vírgula=decimal (pt-BR)
+    if(raw.indexOf(',')>=0 && raw.indexOf('.')>=0){
+      raw = raw.replace(/\./g,'').replace(',', '.');
+    } else {
+      raw = raw.replace(',', '.');
+    }
+    raw = raw.replace(/[^0-9.+-]/g,'');
+    var n = parseFloat(raw);
+    return isFinite(n) ? n : 0;
+  }
   function num(id){
     var el=document.getElementById(id);
     if(!el) return 0;
-    var raw = String(el.value || '').trim();
-    // aceita vírgula ou ponto
-    raw = raw.replace(/\s/g,'').replace(',', '.');
-    // remove tudo que não for dígito/ponto
-    raw = raw.replace(/[^0-9.]/g,'');
-    // só um ponto
-    var parts = raw.split('.');
-    if(parts.length > 2) raw = parts[0] + '.' + parts.slice(1).join('');
-    if(!raw || raw==='.') return 0;
-    var n = parseFloat(raw);
-    return isFinite(n) ? n : 0;
+    return parseBRNumber(el.value);
   }
 
   function heightCm(idPrimary, idFallback){
     var h = num(idPrimary);
     if(!h) h = num(idFallback) || 0;
-    // 1.72 / 1,72 = metros → cm ; 172 = já cm
-    if(h > 0 && h <= 2.5) h = Math.round(h * 1000) / 10; // 1.72 → 172
+    // metros → cm
+    if(h > 0 && h < 3) h = h * 100;
     return h;
   }
 
   function runBfCalc(){
-    // Nunca navegar para compartilhamento a partir da calculadora
     try{
       var celeb=document.getElementById('dayCelebrate');
       if(celeb){ celeb.classList.remove('show'); celeb.style.display='none'; }
       window.__htWeeklyShareActive=false;
+      window.__htShareAllowed=false;
       window.__htBlockShareFromEvo=true;
-      setTimeout(function(){ window.__htBlockShareFromEvo=false; }, 2000);
+      setTimeout(function(){ window.__htBlockShareFromEvo=false; }, 3000);
     }catch(e){}
     var age = num('htBfAge') || num('htEvoAge') || 30;
     var height = heightCm('htBfHeight', 'htEvoHeight');
@@ -25509,9 +25538,15 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
     var resultBox = document.getElementById('htBfResult');
     if(!resultBox) return;
 
-    if(!height || height < 100){
+    if(!height || height < 50){
       resultBox.style.display='block';
-      resultBox.innerHTML='<b style="color:#ff9dc8">Informe a altura (cm).</b>';
+      resultBox.innerHTML='<b style="color:#ff9dc8">Informe a altura (ex: 1,72 ou 172).</b><br><small style="color:#9fb0c5">Valor lido: '+(height||0)+'</small>';
+      return;
+    }
+    if(height < 100){
+      // provavelmente digitou metros errado; tenta *100 de novo só se < 3 já tratado
+      resultBox.style.display='block';
+      resultBox.innerHTML='<b style="color:#ff9dc8">Altura muito baixa ('+height.toFixed(1)+' cm). Use 1,72 ou 172.</b>';
       return;
     }
 
@@ -26537,15 +26572,11 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
 
   function keepCelebrateOpen(){
     try{
+      // NUNCA forçar compartilhamento — só mantém se já autorizado e NÃO está no admin
+      var ad=document.getElementById('admin');
+      if(ad && (ad.classList.contains('active')||ad.classList.contains('editor-open'))) return;
+      if(!(window.__htShareAllowed || window.__htWeeklyShareActive)) return;
       if(typeof htEnsureDayCelebrateOpen==='function') htEnsureDayCelebrateOpen();
-      var day = document.getElementById('dayCelebrate');
-      if(day){
-        day.classList.add('show');
-        day.style.display = 'flex';
-        day.style.pointerEvents = 'auto';
-        day.style.visibility = 'visible';
-        day.style.opacity = '1';
-      }
     }catch(e){}
   }
 
@@ -27014,16 +27045,10 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
   /* ---------- SHARE CAMERA: getUserMedia PURO (igual Evolução) ---------- */
   function keepCelebrate(){
     try{
+      var ad=document.getElementById('admin');
+      if(ad && (ad.classList.contains('active')||ad.classList.contains('editor-open'))) return;
+      if(!(window.__htShareAllowed || window.__htWeeklyShareActive)) return;
       if(typeof htEnsureDayCelebrateOpen === 'function') htEnsureDayCelebrateOpen();
-      var day = document.getElementById('dayCelebrate');
-      if(day){
-        day.classList.add('show');
-        day.style.display = 'flex';
-        day.style.pointerEvents = 'auto';
-        day.style.visibility = 'visible';
-        day.style.opacity = '1';
-        day.style.zIndex = '90';
-      }
     }catch(e){}
   }
 
@@ -27537,6 +27562,88 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
   patch();
   setInterval(patch, 1500);
   try{ console.log('[HT] Never share on admin/master'); }catch(e){}
+})();
+</script>
+
+
+<script id="htShareNuclearBlock">
+(function(){
+  function isAdminNow(){
+    try{
+      var ad=document.getElementById('admin');
+      if(ad && (ad.classList.contains('active') || ad.classList.contains('editor-open'))) return true;
+      var gm=document.getElementById('gmRoot');
+      if(gm && gm.classList.contains('show')) return true;
+      // sessão master/admin sem estar no app aluno
+      if(typeof isAdminSession==='function' && isAdminSession()){
+        if(ad && ad.classList.contains('active')) return true;
+      }
+      try{
+        if(typeof getSession==='function'){
+          var s=getSession();
+          if(s && (s.role==='MASTER' || s.role==='ACADEMY_ADMIN') && gm && gm.classList.contains('show')) return true;
+        }
+      }catch(e2){}
+    }catch(e){}
+    return false;
+  }
+  function kill(){
+    try{
+      if(!isAdminNow() && !(window.__htBlockShareAlways)) {
+        // se não admin, só mata se não autorizado
+        if(window.__htShareAllowed || window.__htWeeklyShareActive) return;
+      }
+      if(isAdminNow()){
+        window.__htShareAllowed = false;
+        window.__htWeeklyShareActive = false;
+      }
+      var day=document.getElementById('dayCelebrate');
+      if(!day) return;
+      if(isAdminNow() || !(window.__htShareAllowed || window.__htWeeklyShareActive)){
+        day.classList.remove('show');
+        day.classList.add('ht-blocked-by-admin');
+        day.style.setProperty('display','none','important');
+        day.style.setProperty('visibility','hidden','important');
+        day.style.setProperty('pointer-events','none','important');
+        day.style.setProperty('opacity','0','important');
+        day.style.setProperty('z-index','-1','important');
+      } else {
+        day.classList.remove('ht-blocked-by-admin');
+      }
+    }catch(e){}
+  }
+  // Override global forcers
+  window.htEnsureDayCelebrateOpen = function(){
+    if(isAdminNow()) { kill(); return; }
+    if(!(window.__htShareAllowed || window.__htWeeklyShareActive)) { kill(); return; }
+    try{
+      var day=document.getElementById('dayCelebrate');
+      if(!day) return;
+      day.classList.remove('ht-blocked-by-admin');
+      day.classList.add('show');
+      day.style.display='flex';
+      day.style.visibility='visible';
+      day.style.pointerEvents='auto';
+      day.style.opacity='1';
+      day.style.zIndex='90';
+    }catch(e){}
+  };
+  var prevOpen = window.openDayCelebrate;
+  if(typeof prevOpen==='function'){
+    window.openDayCelebrate = function(){
+      if(isAdminNow()){ kill(); return; }
+      if(!(window.__htShareAllowed || window.__htWeeklyShareActive)){
+        // completeCurrent sets flag before calling
+        // allow only if flag set
+        kill(); return;
+      }
+      return prevOpen.apply(this, arguments);
+    };
+  }
+  setInterval(kill, 400);
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', kill);
+  else kill();
+  try{ console.log('[HT] Share nuclear block on admin'); }catch(e){}
 })();
 </script>
 
