@@ -3086,6 +3086,25 @@ function save(){localStorage.setItem("heltonTrainingV2",JSON.stringify(state))}
 function show(id){
  const target=document.getElementById(id);
  if(!target){toast("Tela não encontrada.");return;}
+ // Ao trocar de aba/tela, FECHA compartilhamento — só fica aberto no fluxo explícito
+ try{
+   if(id !== 'dayCelebrate'){
+     var shareScreens = {workout:1, detail:1}; // não força fechar só por estar no treino
+     // Fecha sempre ao ir para home/evolução/nutrição/perfil/cardio/ranking (ranking abre share só pelo botão)
+     var closeOn = {home:1, evolution:1, nutrition:1, profile:1, cardio:1, rankingScreen:1, authWelcome:1, authRegister:1, paywall:1, admin:1};
+     if(closeOn[id]){
+       window.__htShareAllowed = false;
+       // não limpa __htWeeklyShareActive se estiver no ranking a caminho do share — limpa ao entrar na tela
+       if(id !== 'rankingScreen') window.__htWeeklyShareActive = false;
+       var dayEl = document.getElementById('dayCelebrate');
+       if(dayEl){
+         dayEl.classList.remove('show');
+         dayEl.style.display = 'none';
+         dayEl.style.pointerEvents = 'none';
+       }
+     }
+   }
+ }catch(eShare){}
  // Aluno NÃO acessa painel admin nem edição
  if(id === "admin" && typeof isAdminSession === "function" && !isAdminSession()){
    toast("Acesso restrito ao administrador.");
@@ -3658,6 +3677,7 @@ function completeCurrent(){
    try{ markDayMainDone(currentDay); }catch(eM){}
    try{ recordMonthWorkout(currentDay); }catch(e){}
    try{ renderHome(); }catch(eH2){}
+   try{ window.__htShareAllowed = true; window.__htWeeklyShareActive = false; }catch(eA){}
    openDayCelebrate();
    // Câmera NÃO abre sozinha — só se a pessoa apertar o botão na moldura
  } else {
@@ -3852,7 +3872,20 @@ function applyFrameGeometry(){
   const link=document.getElementById('shareAchievementLink');if(link){link.href=APP_SHARE_URL;link.textContent=APP_SHARE_URL.replace(/^https?:\/\//,'')}
 }
 function openDayCelebrate(){
-  try{ if(window.__htBlockShareFromEvo){ console.log('[HT] share bloqueado (evolução/BF)'); return; } }catch(e){}
+  try{
+    if(window.__htBlockShareFromEvo){ console.log('[HT] share bloqueado (evolução/BF)'); return; }
+    // Só abre se o dia (4 principais) estiver completo OU sessão de ranking autorizada
+    var dayOk = false;
+    try{
+      if(typeof isDayMainDone==='function' && typeof currentDay!=='undefined') dayOk = !!isDayMainDone(currentDay);
+    }catch(e){}
+    var rankOk = !!(window.__htWeeklyShareActive || window.__htShareAllowed);
+    if(!dayOk && !rankOk){
+      console.log('[HT] openDayCelebrate bloqueado — dia incompleto e ranking não autorizado');
+      return;
+    }
+    window.__htShareAllowed = true;
+  }catch(e){}
   const d = days[currentDay];
   if(!d) return;
   // ===== MESMA CONTA da tela de início (renderHome) =====
@@ -3918,6 +3951,8 @@ document.getElementById('dayStatExercises').textContent=n;
   });
 }
 function closeDayCelebrate(){
+  try{ window.__htShareAllowed=false; window.__htWeeklyShareActive=false; }catch(e){}
+
   try{ document.getElementById('dayCelebrate').classList.remove('show'); }catch(e){}
   try{ if(typeof renderHome==='function') renderHome(); }catch(e2){}
   try{ if(typeof renderWorkout==='function') renderWorkout(); }catch(e3){}
@@ -4005,8 +4040,27 @@ function htClearShareCamPending(){
 }
 function htEnsureDayCelebrateOpen(){
   try{
+    // NÃO reabre compartilhamento a qualquer custo — só se já autorizado
+    var dayOk = false;
+    try{
+      if(typeof isDayMainDone==='function' && typeof currentDay!=='undefined') dayOk = !!isDayMainDone(currentDay);
+    }catch(e){}
+    var allowed = !!(window.__htShareAllowed || window.__htWeeklyShareActive || dayOk);
+    if(!allowed || window.__htBlockShareFromEvo){
+      // se não pode, garante fechado
+      var dayX = document.getElementById('dayCelebrate');
+      if(dayX && dayX.classList.contains('show') && !allowed){
+        dayX.classList.remove('show');
+        dayX.style.display = 'none';
+      }
+      return;
+    }
     var day = document.getElementById('dayCelebrate');
     if(!day) return;
+    // só mantém se já estiver aberta OU explicitamente permitida nesta sessão
+    if(!day.classList.contains('show') && !window.__htShareAllowed && !window.__htWeeklyShareActive){
+      return;
+    }
     day.classList.add('show');
     day.style.display = 'flex';
     day.style.visibility = 'visible';
@@ -4015,6 +4069,8 @@ function htEnsureDayCelebrateOpen(){
     day.style.zIndex = '90';
   }catch(e){}
 }
+window.htEnsureDayCelebrateOpen = htEnsureDayCelebrateOpen;
+
 
 
 
@@ -24259,6 +24315,7 @@ function htRenderRanking(){
 function htOpenWeeklyCelebrate(){
   htEnsureState();
   if((state.ranking.weeksCompleted||0)<1){ if(typeof toast==='function') toast('Complete uma semana de treinos primeiro.'); return; }
+  try{ window.__htShareAllowed = true; window.__htWeeklyShareActive = true; }catch(e){}
   var totals = htWeeklyTotals();
   var badge = htCurrentBadge();
   lastDayStats = {exercises: totals.exercises, min: totals.min, kcal: totals.kcal, dayName: 'Semana completa'};
@@ -27158,6 +27215,102 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
 })();
 </script>
 
+
+
+<!-- ===== HT SHARE GATE: compartilhamento só após 4 exercícios ou ranking liberado ===== -->
+<script id="htShareGateOnlyWhenAllowed">
+(function(){
+  'use strict';
+  function dayMainDone(){
+    try{
+      if(typeof isDayMainDone==='function' && typeof currentDay!=='undefined')
+        return !!isDayMainDone(currentDay);
+    }catch(e){}
+    return false;
+  }
+  function allowed(){
+    if(window.__htBlockShareFromEvo) return false;
+    if(window.__htShareAllowed) return true;
+    if(window.__htWeeklyShareActive) return true;
+    return dayMainDone();
+  }
+  function closeShare(force){
+    try{
+      if(!force && allowed()) return;
+      var day = document.getElementById('dayCelebrate');
+      if(!day) return;
+      if(day.classList.contains('show') || day.style.display === 'flex'){
+        day.classList.remove('show');
+        day.style.display = 'none';
+        day.style.pointerEvents = 'none';
+        day.style.visibility = 'hidden';
+      }
+    }catch(e){}
+  }
+  // Reescreve keepCelebrate helpers usados pelas câmeras
+  function wrapEnsure(){
+    var prev = window.htEnsureDayCelebrateOpen;
+    window.htEnsureDayCelebrateOpen = function(){
+      if(!allowed()){ closeShare(true); return; }
+      if(typeof prev === 'function'){
+        try{ return prev.apply(this, arguments); }catch(e){}
+      }
+    };
+  }
+  function wrapOpen(){
+    if(typeof window.openDayCelebrate !== 'function') return;
+    if(window.openDayCelebrate.__htGated) return;
+    var prev = window.openDayCelebrate;
+    window.openDayCelebrate = function(){
+      var dayOk = dayMainDone();
+      var rankOk = !!(window.__htWeeklyShareActive || window.__htShareAllowed);
+      if(!dayOk && !rankOk){
+        try{ console.log('[HT ShareGate] bloqueado'); }catch(e){}
+        return;
+      }
+      window.__htShareAllowed = true;
+      return prev.apply(this, arguments);
+    };
+    window.openDayCelebrate.__htGated = true;
+  }
+  // Observa tentativas de abrir dayCelebrate sem permissão
+  function watch(){
+    var day = document.getElementById('dayCelebrate');
+    if(!day || day.__htShareGateObs) return;
+    day.__htShareGateObs = true;
+    new MutationObserver(function(){
+      if(day.classList.contains('show') && !allowed()){
+        closeShare(true);
+      }
+    }).observe(day, {attributes:true, attributeFilter:['class','style']});
+  }
+  // Botão ranking: ao abrir share, autoriza
+  function wireRankBtn(){
+    var btn = document.getElementById('htRankShareBtn');
+    if(!btn || btn.__htShareGate) return;
+    btn.__htShareGate = true;
+    btn.addEventListener('click', function(){
+      try{ window.__htShareAllowed = true; window.__htWeeklyShareActive = true; }catch(e){}
+    }, true);
+  }
+  function boot(){
+    wrapEnsure();
+    wrapOpen();
+    watch();
+    wireRankBtn();
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot,100); });
+  else setTimeout(boot,100);
+  setInterval(function(){
+    try{
+      wrapEnsure(); wrapOpen(); wireRankBtn();
+      // se share aberto ilegalmente, fecha
+      if(!allowed()) closeShare(true);
+    }catch(e){}
+  }, 1200);
+  try{ console.log('[HT ShareGate] ativo — só 4 exercícios ou ranking'); }catch(e){}
+})();
+</script>
 
 </body>
 </html>
