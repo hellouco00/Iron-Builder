@@ -3702,6 +3702,11 @@ function markDayMainDone(day){
 
 function completeCurrent(){
  try{
+  // Trava contra clique duplo / dupla execução (vários scripts chamam essa função no mesmo clique,
+  // o que fazia o exercício/dia serem contados duas vezes e o botão parecer travado)
+  var __now = Date.now();
+  if(window.__htCompleteLock && (__now - window.__htCompleteLock) < 700){ return; }
+  window.__htCompleteLock = __now;
   if(typeof currentDay==='undefined' || currentDay==null){ toast&&toast('Abra um treino primeiro'); return; }
   if(typeof currentEx==='undefined' || currentEx==null){ toast&&toast('Abra um exercício primeiro'); return; }
   var loadEl=document.getElementById("load");
@@ -20571,9 +20576,18 @@ if (tab === 'uso') {
 
   function watchProfileScreen() {
     try {
+      var p0 = document.getElementById('profile');
+      if (!p0) return;
+      var lastActive = p0.classList.contains('active');
       var obs = new MutationObserver(function () {
         var p = document.getElementById('profile');
-        if (!p || !p.classList.contains('active')) return;
+        if (!p) return;
+        var nowActive = p.classList.contains('active');
+        // Só redesenha quando a tela de perfil É ABERTA agora (evita redesenhar
+        // toda vez que qualquer outra tela do app troca de classe, o que fazia
+        // os blocos de Pagamento/Suporte piscarem sem parar)
+        if (!(nowActive && !lastActive)) { lastActive = nowActive; return; }
+        lastActive = nowActive;
         var identity = null;
         try { identity = JSON.parse(localStorage.getItem('htV39Identity') || 'null'); } catch (e) {}
         var profile = identity || {};
@@ -20586,7 +20600,8 @@ if (tab === 'uso') {
         profile = ensureIdentity(profile);
         window.htV39RenderProfileExtras(p, profile);
       });
-      obs.observe(document.body, { attributes: true, subtree: true, attributeFilter: ['class'] });
+      // Observa só a tela de perfil (não o app inteiro) — evita disparos em cascata
+      obs.observe(p0, { attributes: true, attributeFilter: ['class'] });
     } catch (e) {}
   }
 
