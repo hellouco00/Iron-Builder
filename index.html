@@ -3611,15 +3611,20 @@ function renderWorkout(){
  });
 } 
 function openExercise(i){
- currentEx=i;currentType=days[currentDay].exercises[i][1];const e=days[currentDay].exercises[i];
- document.getElementById("detailName").textContent=e[0]+" — "+currentType;
- document.getElementById("sets").value=e[3];
- document.getElementById("reps").value=parseInt(e[4])||10;
- document.getElementById("load").value=state.loads[progressKey(currentDay,i)]||state.loads[currentDay+"-"+i]||"";
- document.getElementById("execution").textContent=e[5];
- document.getElementById("gifCredit").textContent="GIF do V10 • com fallback local para uso offline";
- setType(currentType);updateIntensity();show("detail");
+ try{
+  currentEx=i;currentType=days[currentDay].exercises[i][1];const e=days[currentDay].exercises[i];
+  document.getElementById("detailName").textContent=e[0]+" — "+currentType;
+  document.getElementById("sets").value=e[3];
+  document.getElementById("reps").value=parseInt(e[4])||10;
+  document.getElementById("load").value=state.loads[progressKey(currentDay,i)]||state.loads[currentDay+"-"+i]||"";
+  document.getElementById("execution").textContent=e[5];
+  document.getElementById("gifCredit").textContent="GIF do V10 • com fallback local para uso offline";
+  setType(currentType);updateIntensity();show("detail");
+ }catch(err){ try{console.warn(err);alert('Erro ao abrir exercício');}catch(e){} }
 }
+window.openExercise=openExercise;
+window.openDay=openDay;
+window.renderWorkout=renderWorkout;
 function setType(type){
  currentType=type;
  const e=days[currentDay]?.exercises?.[currentEx];
@@ -22843,49 +22848,51 @@ console.log("[HT] Catraca: onclick inline only (global capture disabled)");
   'use strict';
   function forceVisible(id){
     var el=document.getElementById(id);
-    if(!el) return;
-    if(!el.classList.contains('show')){
-      // garante que fechado não bloqueia clique
-      el.style.setProperty('display','none','important');
-      el.style.setProperty('pointer-events','none','important');
-      return;
-    }
-    // dayCelebrate só se autorizado
-    if(id==='dayCelebrate'){
-      var tok=window.__htShareToken;
-      var ok=!!(window.__htShareAllowed||window.__htWeeklyShareActive||(tok&&tok.t&&(Date.now()-tok.t)<5*60*1000));
-      if(!ok){
-        el.classList.remove('show');
-        el.style.setProperty('display','none','important');
-        el.style.setProperty('pointer-events','none','important');
+    if(!el || el.__htForceBusy) return;
+    el.__htForceBusy = true;
+    try{
+      if(!el.classList.contains('show')){
+        // só esconde se ainda estiver visível (evita loop de style)
+        if(el.style.display !== 'none'){
+          el.style.display = 'none';
+          el.style.pointerEvents = 'none';
+        }
         return;
       }
+      if(id==='dayCelebrate'){
+        var tok=window.__htShareToken;
+        var ok=!!(window.__htShareAllowed||window.__htWeeklyShareActive||(tok&&tok.t&&(Date.now()-tok.t)<5*60*1000));
+        if(!ok){
+          el.classList.remove('show');
+          el.style.display = 'none';
+          el.style.pointerEvents = 'none';
+          return;
+        }
+      }
+      var want = (id==='celebrate') ? 'grid' : 'flex';
+      if(el.style.display !== want) el.style.display = want;
+      el.style.visibility = 'visible';
+      el.style.pointerEvents = 'auto';
+    }finally{
+      // libera no próximo frame
+      setTimeout(function(){ el.__htForceBusy = false; }, 0);
     }
-    el.style.display = (id==='celebrate') ? 'grid' : 'flex';
-    el.style.visibility='visible';
-    el.style.pointerEvents='auto';
   }
   function repair(){
     forceVisible('restOverlay');
     forceVisible('celebrate');
     forceVisible('dayCelebrate');
     forceVisible('monthEndModal');
-    var dots=document.getElementById('seriesDots');
-    if(dots){
-      dots.querySelectorAll('.seriesDot').forEach(function(d){
-        d.style.pointerEvents='auto';
-        d.style.touchAction='manipulation';
-      });
-    }
   }
-  // Corrige imediatamente quando qualquer uma das telas críticas recebe .show.
+  // SÓ observa class — NUNCA style (style + observer = freeze)
   ['restOverlay','celebrate','dayCelebrate','monthEndModal'].forEach(function(id){
     var el=document.getElementById(id);
-    if(!el) return;
-    new MutationObserver(function(){ forceVisible(id); }).observe(el,{attributes:true,attributeFilter:['class','style']});
+    if(!el || el.__htClassObs) return;
+    el.__htClassObs = true;
+    new MutationObserver(function(){ forceVisible(id); }).observe(el,{attributes:true,attributeFilter:['class']});
   });
   document.addEventListener('DOMContentLoaded',repair);
-  setTimeout(repair,50); setTimeout(repair,300); setTimeout(repair,1000);
+  setTimeout(repair,100);
 })();
 </script>
 
@@ -27720,121 +27727,119 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
     try{
       if(typeof window.completeCurrent==='function' && !window.completeCurrent.__htFinalB) installComplete();
       if(typeof window.openDayCelebrate==='function' && !window.openDayCelebrate.__htFinalB) installOpenGate();
-      installEnsure();
-      ensureBf();
+      // BF só se a tela evolução estiver ativa
+      var evo=document.getElementById('evolution');
+      if(evo && evo.classList.contains('active')) ensureBf();
       hideStuckOverlays();
     }catch(e){}
-  }, 1200);
+  }, 4000);
 
   try{ console.log('['+VER+'] completeCurrent safe + share gate + BF'); }catch(e){}
 })();
 </script>
 
 
+
+
+
 <script id="htClickUnlockFinal">
 (function(){
   'use strict';
-  function clearShareCover(){
+  function hideShareIfUnauthorized(){
     try{
       var tok = window.__htShareToken;
       var ok = !!(window.__htShareAllowed || window.__htWeeklyShareActive || (tok && tok.t && (Date.now()-tok.t) < 5*60*1000));
       var day = document.getElementById('dayCelebrate');
-      // Sem token: fecha e não bloqueia clique. Com token: deixa a celebração do dia.
-      if(day && !ok){
+      if(!day) return;
+      if(!ok && day.classList.contains('show')){
         day.classList.remove('show');
-        day.style.setProperty('display','none','important');
-        day.style.setProperty('pointer-events','none','important');
-        day.style.setProperty('visibility','hidden','important');
-        day.style.setProperty('opacity','0','important');
-        day.style.setProperty('z-index','-1','important');
       }
       if(!ok){
+        day.style.display = 'none';
+        day.style.pointerEvents = 'none';
         try{ localStorage.removeItem('htShareOpenV9'); sessionStorage.removeItem('htShareOpenV9'); }catch(e){}
-      }
-      // overlays fechados
-      ['celebrate','restOverlay','monthEndModal'].forEach(function(id){
-        var el=document.getElementById(id);
-        if(el && !el.classList.contains('show')){
-          el.style.setProperty('display','none','important');
-          el.style.setProperty('pointer-events','none','important');
-        }
-      });
-      // gmRoot fantasma
-      var gm=document.getElementById('gmRoot');
-      if(gm && !gm.classList.contains('show')){
-        gm.style.setProperty('display','none','important');
-        gm.style.setProperty('pointer-events','none','important');
       }
     }catch(e){}
   }
-  function unlockChrome(){
+  function unlockUi(){
     try{
       document.body.style.pointerEvents = 'auto';
-      document.documentElement.style.pointerEvents = 'auto';
       var bottom = document.getElementById('bottom');
       if(bottom){
         var wel = document.getElementById('authWelcome');
         var admin = document.getElementById('admin');
-        var hide = (wel && wel.classList.contains('active')) || (admin && admin.classList.contains('active'));
         var gm = document.getElementById('gmRoot');
-        if(gm && gm.classList.contains('show')) hide = true;
+        var hide = (wel && wel.classList.contains('active')) || (admin && admin.classList.contains('active')) || (gm && gm.classList.contains('show'));
         if(!hide){
-          bottom.style.setProperty('display','flex','important');
-          bottom.style.setProperty('pointer-events','auto','important');
-          bottom.style.setProperty('visibility','visible','important');
-          bottom.style.setProperty('z-index','1200','important');
-          bottom.querySelectorAll('.nav, button').forEach(function(b){
-            b.style.pointerEvents = 'auto';
-          });
+          bottom.style.display = 'flex';
+          bottom.style.pointerEvents = 'auto';
+          bottom.style.zIndex = '1200';
         }
       }
-      // botões de série / timer
-      var box = document.getElementById('seriesTracker');
-      if(box){
-        box.style.pointerEvents = 'auto';
-        box.querySelectorAll('button, .seriesDot').forEach(function(el){
-          el.style.pointerEvents = 'auto';
-          el.style.touchAction = 'manipulation';
-        });
-      }
-      // reexpõe funções
-      if(typeof markSetDone==='function') window.markSetDone = markSetDone;
-      if(typeof startRestTimer==='function') window.startRestTimer = startRestTimer;
-      if(typeof onSeriesDotClick==='function') window.onSeriesDotClick = onSeriesDotClick;
-      if(typeof completeCurrent==='function') window.completeCurrent = window.completeCurrent;
-      if(typeof setType==='function') window.setType = window.setType;
+      // garante funções de treino no window
+      try{
+        if(typeof openExercise==='function') window.openExercise = openExercise;
+        if(typeof openDay==='function') window.openDay = openDay;
+        if(typeof renderWorkout==='function') window.renderWorkout = renderWorkout;
+        if(typeof markSetDone==='function') window.markSetDone = markSetDone;
+        if(typeof startRestTimer==='function') window.startRestTimer = startRestTimer;
+        if(typeof onSeriesDotClick==='function') window.onSeriesDotClick = onSeriesDotClick;
+        if(typeof completeCurrent==='function') window.completeCurrent = completeCurrent;
+      }catch(e){}
     }catch(e){}
   }
-  function tick(){
-    clearShareCover();
-    unlockChrome();
+  function once(){
+    hideShareIfUnauthorized();
+    unlockUi();
   }
-  setTimeout(tick, 100);
-  setTimeout(tick, 500);
-  setInterval(tick, 2000);
-  // ao entrar em treino/detalhe, limpa na hora
-  if(typeof window.show === 'function' && !window.show.__htClickUnlock){
+  setTimeout(once, 200);
+  setTimeout(once, 1500);
+  // raro — não a cada 2s (causava travamento)
+  setInterval(once, 8000);
+
+  // Ao abrir treino, só esconde share residual (leve)
+  if(typeof window.show==='function' && !window.show.__htClickUnlock){
     var prev = window.show;
     window.show = function(id){
       var r = prev.apply(this, arguments);
-      if(id==='detail'||id==='workout'||id==='home'||id==='profile'||id==='cardio'||id==='nutrition'){
-        // limpa share residual só se não acabou de autorizar
+      if(id==='detail' || id==='workout' || id==='home'){
         try{
           var tok = window.__htShareToken;
-          var fresh = tok && tok.t && (Date.now()-tok.t) < 3000;
+          var fresh = tok && tok.t && (Date.now()-tok.t) < 4000;
           if(!fresh){
             window.__htShareAllowed = false;
             window.__htWeeklyShareActive = false;
             window.__htShareToken = null;
+            var day = document.getElementById('dayCelebrate');
+            if(day){ day.classList.remove('show'); day.style.display='none'; day.style.pointerEvents='none'; }
           }
         }catch(e){}
-        setTimeout(tick, 20);
       }
+      setTimeout(unlockUi, 30);
       return r;
     };
     window.show.__htClickUnlock = true;
   }
-  try{ console.log('[HT] Click unlock final'); }catch(e){}
+
+  // Clique nos exercícios: delegação de segurança se onclick sumir
+  document.addEventListener('click', function(ev){
+    try{
+      var t = ev.target;
+      if(!t || !t.closest) return;
+      var ex = t.closest('button.exercise');
+      if(ex && ex.parentElement && ex.parentElement.id==='exerciseList'){
+        // se o handler nativo falhar, tenta pelo índice
+        if(!ex.onclick && window.openExercise){
+          var list = document.querySelectorAll('#exerciseList button.exercise');
+          for(var i=0;i<list.length;i++){
+            if(list[i]===ex){ window.openExercise(i); break; }
+          }
+        }
+      }
+    }catch(e){}
+  }, true);
+
+  try{ console.log('[HT] Click unlock light — no freeze'); }catch(e){}
 })();
 </script>
 
