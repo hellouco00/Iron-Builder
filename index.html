@@ -1001,40 +1001,6 @@ body:has(#authWelcome.active) #bottom {
   user-select:none;
 }
 </style>
-
-<style id="htKillShareOnAdmin">
-/* Overlays escondidos NÃO podem bloquear clique */
-#dayCelebrate:not(.show),
-#celebrate:not(.show),
-#restOverlay:not(.show),
-#monthEndModal:not(.show){
-  display:none !important;
-  pointer-events:none !important;
-  visibility:hidden !important;
-  opacity:0 !important;
-  z-index:-1 !important;
-}
-/* Compartilhamento nunca sobrepõe Master/Admin */
-body:has(#admin.screen.active) #dayCelebrate,
-body:has(#admin.editor-open) #dayCelebrate,
-body:has(#gmRoot.show) #dayCelebrate,
-#dayCelebrate.ht-blocked-by-admin{
-  display:none !important;
-  pointer-events:none !important;
-  visibility:hidden !important;
-  opacity:0 !important;
-  z-index:-1 !important;
-}
-/* Botões de treino sempre clicáveis */
-button.bigBtn,
-#detail button,
-#workout button{
-  pointer-events:auto !important;
-  position:relative;
-  z-index:5;
-}
-</style>
-
 </head>
 <body>
 <div class="app">
@@ -1594,7 +1560,7 @@ button.bigBtn,
   <div style="font-size:10px;color:#71839a;margin-top:8px;text-align:center">Toque em ● série feita de novo para desfazer · ou toque no número</div>
 </div>
 
-<button type="button" class="bigBtn" id="htBtnCompleteEx" onclick="try{window.completeCurrent()}catch(e){alert(e)}">✓ Concluir exercício</button>
+<button type="button" class="bigBtn" id="htBtnCompleteEx" onclick="completeCurrent()">✓ Concluir exercício</button>
 </div>
 <div class="note">A classificação de intensidade é uma estimativa baseada na carga informada e nas repetições. Não representa diagnóstico ou medida clínica.</div>
 </section>
@@ -3611,20 +3577,15 @@ function renderWorkout(){
  });
 } 
 function openExercise(i){
- try{
-  currentEx=i;currentType=days[currentDay].exercises[i][1];const e=days[currentDay].exercises[i];
-  document.getElementById("detailName").textContent=e[0]+" — "+currentType;
-  document.getElementById("sets").value=e[3];
-  document.getElementById("reps").value=parseInt(e[4])||10;
-  document.getElementById("load").value=state.loads[progressKey(currentDay,i)]||state.loads[currentDay+"-"+i]||"";
-  document.getElementById("execution").textContent=e[5];
-  document.getElementById("gifCredit").textContent="GIF do V10 • com fallback local para uso offline";
-  setType(currentType);updateIntensity();show("detail");
- }catch(err){ try{console.warn(err);alert('Erro ao abrir exercício');}catch(e){} }
+ currentEx=i;currentType=days[currentDay].exercises[i][1];const e=days[currentDay].exercises[i];
+ document.getElementById("detailName").textContent=e[0]+" — "+currentType;
+ document.getElementById("sets").value=e[3];
+ document.getElementById("reps").value=parseInt(e[4])||10;
+ document.getElementById("load").value=state.loads[progressKey(currentDay,i)]||state.loads[currentDay+"-"+i]||"";
+ document.getElementById("execution").textContent=e[5];
+ document.getElementById("gifCredit").textContent="GIF do V10 • com fallback local para uso offline";
+ setType(currentType);updateIntensity();show("detail");
 }
-window.openExercise=openExercise;
-window.openDay=openDay;
-window.renderWorkout=renderWorkout;
 function setType(type){
  currentType=type;
  const e=days[currentDay]?.exercises?.[currentEx];
@@ -3702,53 +3663,57 @@ function markDayMainDone(day){
 
 function completeCurrent(){
  try{
-  // Trava contra clique duplo / dupla execução (vários scripts chamam essa função no mesmo clique,
-  // o que fazia o exercício/dia serem contados duas vezes e o botão parecer travado)
-  var __now = Date.now();
-  if(window.__htCompleteLock && (__now - window.__htCompleteLock) < 700){ return; }
-  window.__htCompleteLock = __now;
-  if(typeof currentDay==='undefined' || currentDay==null){ toast&&toast('Abra um treino primeiro'); return; }
-  if(typeof currentEx==='undefined' || currentEx==null){ toast&&toast('Abra um exercício primeiro'); return; }
-  var loadEl=document.getElementById("load");
-  var loadVal=loadEl?(+loadEl.value||0):0;
+  if(typeof currentDay==='undefined' || currentDay===null){
+    try{ toast('Abra um treino primeiro'); }catch(e){ alert('Abra um treino primeiro'); }
+    return;
+  }
+  if(typeof currentEx==='undefined' || currentEx===null){
+    try{ toast('Abra um exercício primeiro'); }catch(e){ alert('Abra um exercício primeiro'); }
+    return;
+  }
+  var loadEl = document.getElementById('load');
+  var loadVal = loadEl ? (+loadEl.value || 0) : 0;
   setExDone(currentDay, currentEx, true, loadVal);
-  try{ state.loads[progressKey(currentDay, currentEx)] = loadVal; }catch(eL){}
+  try{
+    state.loads = state.loads || {};
+    state.loads[progressKey(currentDay, currentEx)] = loadVal;
+  }catch(e){}
   try{ recordMonthExercise(currentDay, currentEx); }catch(e){}
-  try{ save(); }catch(eSv){}
+  try{ save(); }catch(e){}
   try{ renderWorkout(); }catch(eW){}
   try{ renderHome(); }catch(eH){}
-  var d=days[currentDay];
+  var d = days[currentDay];
   var mainDone = false;
   try{
-    mainDone = (typeof isDayMainDone==='function') ? !!isDayMainDone(currentDay)
+    mainDone = (typeof isDayMainDone==='function')
+      ? !!isDayMainDone(currentDay)
       : !!(d && d.exercises && d.exercises.slice(0,4).every(function(_,i){ return isExDone(currentDay,i); }));
-  }catch(eMD){ mainDone=false; }
+  }catch(e){ mainDone = false; }
   if(mainDone){
     try{ markDayMainDone(currentDay); }catch(eM){}
     try{ recordMonthWorkout(currentDay); }catch(e){}
     try{ renderHome(); }catch(eH2){}
-    // autoriza compartilhamento do dia
-    window.__htShareAllowed = true;
-    window.__htWeeklyShareActive = false;
-    window.__htShareToken = { reason:'day-complete', t: Date.now() };
-    window.__htBlockShareFromEvo = false;
+    try{ window.__htShareAllowed = true; window.__htWeeklyShareActive = false; }catch(eA){}
     try{ openDayCelebrate(); }catch(eO){ console.warn(eO); }
   } else {
-    try{ show("workout"); }catch(eS){}
-    var cel=document.getElementById("celebrate");
-    if(cel){
-      cel.classList.add("show");
-      cel.style.display='grid';
-      cel.style.pointerEvents='auto';
-      cel.style.visibility='visible';
-    }
+    try{ show('workout'); }catch(eS){}
+    var cel = document.getElementById('celebrate');
+    if(cel) cel.classList.add('show');
   }
  }catch(err){
-   try{ console.warn('[completeCurrent]', err); alert('Erro ao concluir: '+(err&&err.message||err)); }catch(e2){}
+   try{ console.warn(err); alert('Erro ao concluir: '+(err && err.message || err)); }catch(e2){}
  }
 }
 window.completeCurrent = completeCurrent;
-function closeCelebrate(){document.getElementById("celebrate").classList.remove("show")}
+function closeCelebrate(){
+  try{
+    var cel=document.getElementById("celebrate");
+    if(!cel) return;
+    cel.classList.remove("show");
+    cel.style.display="none";
+    cel.style.pointerEvents="none";
+  }catch(e){}
+}
 
 
 const DAY_PRAISES_SOLO=[
@@ -3942,16 +3907,17 @@ function openDayCelebrate(){
       var ad=document.getElementById('admin');
       if(ad && (ad.classList.contains('active')||ad.classList.contains('editor-open'))) return;
     }catch(e){}
-    var rankOk = !!(window.__htWeeklyShareActive);
-    var explicit = !!window.__htShareAllowed;
-    var tokOk = !!(window.__htShareToken && window.__htShareToken.t && (Date.now()-window.__htShareToken.t) < 5*60*1000);
-    // Só abre com flag explícita (completeCurrent ou ranking)
-    if(!rankOk && !explicit && !tokOk){
-      console.log('[HT] openDayCelebrate bloqueado — sem autorização explícita');
+    var rankOk = !!(window.__htWeeklyShareActive || window.__htShareAllowed);
+    var dayOk = false;
+    try{
+      if(typeof isDayMainDone==='function' && typeof currentDay!=='undefined') dayOk = !!isDayMainDone(currentDay);
+    }catch(e){}
+    // openDayCelebrate só com flag explícita OU dia completo (setado em completeCurrent)
+    if(!rankOk && !dayOk && !window.__htShareAllowed){
+      console.log('[HT] openDayCelebrate bloqueado');
       return;
     }
     window.__htShareAllowed = true;
-    if(!window.__htShareToken) window.__htShareToken = { reason:'open', t: Date.now() };
   }catch(e){}
   const d = days[currentDay];
   if(!d) return;
@@ -4519,15 +4485,8 @@ function openShareCameraInApp(){
         }
         if(typeof setPhotoChrome==='function') setPhotoChrome(true);
         if(typeof toast==='function') toast('Foto pronta — arraste para enquadrar');
-        // Só reabre compartilhamento se já autorizado (nunca no Master/Admin)
-        try{
-          var ad=document.getElementById('admin');
-          var adminOn=ad && (ad.classList.contains('active')||ad.classList.contains('editor-open'));
-          if(!adminOn && (window.__htShareAllowed || window.__htWeeklyShareActive)){
-            var day = document.getElementById('dayCelebrate');
-            if(day){ day.classList.add('show'); day.style.display='flex'; day.style.pointerEvents='auto'; }
-          }
-        }catch(eDay){}
+        var day = document.getElementById('dayCelebrate');
+        if(day){ day.classList.add('show'); day.style.display='flex'; day.style.pointerEvents='auto'; }
       }catch(e){
         console.warn(e);
         if(typeof toast==='function') toast('Erro ao capturar. Use a Galeria.');
@@ -11330,14 +11289,15 @@ function htOpenExercise(i){
 /* ---- Completar 4 principais → foto ---- */
 var _origCompleteCurrent = null;
 function htCompleteCurrent(){
+  // Chama a lógica original (já com 4 principais = verde + câmera)
+  if(_origCompleteCurrent) _origCompleteCurrent();
+  else if(typeof completeCurrent==='function' && !completeCurrent._htV32) completeCurrent();
   try{
-    // Preferir a função real de conclusão
-    if(typeof _origCompleteCurrent==='function'){
-      _origCompleteCurrent();
-    } else if(typeof completeCurrent==='function' && !completeCurrent._htV32){
-      completeCurrent();
+    if(typeof isDayMainDone==='function' && isDayMainDone(currentDay)){
+      try{ markDayMainDone(currentDay); }catch(eM){}
+      try{ if(typeof renderHome==='function') renderHome(); }catch(eR){}
     }
-  }catch(err){ console.warn('[HT V32] complete', err); try{alert('Erro ao concluir exercício');}catch(e){} }
+  }catch(err){ console.warn('[HT V32] complete', err); }
 }
 
 /* ---- Cronômetro robusto (tela bloqueada) ---- */
@@ -11834,7 +11794,7 @@ function install(){
     window.setType = htSetType;
     setType._htV32 = true;
   }
-  if(typeof completeCurrent === 'function' && !completeCurrent._htV32){
+  if(false && typeof completeCurrent === 'function' && !completeCurrent._htV32){
     _origCompleteCurrent = completeCurrent;
     window.completeCurrent = htCompleteCurrent;
     completeCurrent._htV32 = true;
@@ -20576,18 +20536,9 @@ if (tab === 'uso') {
 
   function watchProfileScreen() {
     try {
-      var p0 = document.getElementById('profile');
-      if (!p0) return;
-      var lastActive = p0.classList.contains('active');
       var obs = new MutationObserver(function () {
         var p = document.getElementById('profile');
-        if (!p) return;
-        var nowActive = p.classList.contains('active');
-        // Só redesenha quando a tela de perfil É ABERTA agora (evita redesenhar
-        // toda vez que qualquer outra tela do app troca de classe, o que fazia
-        // os blocos de Pagamento/Suporte piscarem sem parar)
-        if (!(nowActive && !lastActive)) { lastActive = nowActive; return; }
-        lastActive = nowActive;
+        if (!p || !p.classList.contains('active')) return;
         var identity = null;
         try { identity = JSON.parse(localStorage.getItem('htV39Identity') || 'null'); } catch (e) {}
         var profile = identity || {};
@@ -20600,8 +20551,7 @@ if (tab === 'uso') {
         profile = ensureIdentity(profile);
         window.htV39RenderProfileExtras(p, profile);
       });
-      // Observa só a tela de perfil (não o app inteiro) — evita disparos em cascata
-      obs.observe(p0, { attributes: true, attributeFilter: ['class'] });
+      obs.observe(document.body, { attributes: true, subtree: true, attributeFilter: ['class'] });
     } catch (e) {}
   }
 
@@ -22459,14 +22409,26 @@ console.log("[HT] Catraca: onclick inline only (global capture disabled)");
     var host = profileScreen.querySelector('.detailCard') || profileScreen;
     var after = document.getElementById('htV39ProfileBlock') || document.getElementById('htV39AccessBlock') || host;
     var parent = after.parentNode || profileScreen;
-    // Cria UMA vez cada bloco — sem reordenar depois (reordenar luta com pagamento e pisca)
+    // Só cria se ainda não existe — evita piscar (re-render constante)
     if (!document.getElementById('htBillingDayBlock')) {
       renderBillingBlock(parent, (currentUserSafe() && currentUserSafe().profile) || {});
     }
     if (!document.getElementById('htMasterContactBlock')) {
       renderMasterContactBlock(parent);
     }
-    // NÃO faz insertBefore em loop — isso causava o pisca-pisca
+    // se já existe, NÃO re-renderiza (evita piscar com pagamento)
+    // reordenar
+    try {
+      var qr = document.getElementById('htV39ProfileBlock');
+      var bill = document.getElementById('htBillingDayBlock');
+      var contact = document.getElementById('htMasterContactBlock');
+      var acc = document.getElementById('htV39AccessBlock');
+      if (qr && bill && qr.nextSibling !== bill) qr.parentNode.insertBefore(bill, qr.nextSibling);
+      if (bill && contact && bill.nextSibling !== contact) bill.parentNode.insertBefore(contact, bill.nextSibling);
+      if (contact && acc && contact.nextSibling !== acc) {
+        // access pode ficar depois
+      }
+    } catch (e) {}
   }
 
   var _prevExtras = window.htV39RenderProfileExtras;
@@ -22480,18 +22442,13 @@ console.log("[HT] Catraca: onclick inline only (global capture disabled)");
   // observar tela de perfil
   function watch() {
     var p = document.getElementById('profile');
-    if (!p || p.__htProfileWatch) return;
-    p.__htProfileWatch = true;
-    var lastActive = false;
+    if (!p) return;
     try {
       new MutationObserver(function () {
-        var now = p.classList.contains('active');
-        // só quando ENTRA no perfil (não a cada mutação)
-        if (now && !lastActive) {
+        if (p.classList.contains('active')) {
           setTimeout(refreshProfileExtras, 80);
           setTimeout(injectAdminContactPanel, 100);
         }
-        lastActive = now;
       }).observe(p, { attributes: true, attributeFilter: ['class'] });
     } catch (e) {}
   }
@@ -22656,21 +22613,22 @@ console.log("[HT] Catraca: onclick inline only (global capture disabled)");
   function _placePayNow() {
     var profile = document.getElementById('profile');
     if (!profile || !profile.classList.contains('active')) return;
-    // Já existe: não mexe mais no DOM (fim do pisca-pisca)
-    if (document.getElementById('htStudentPayBlock')) return;
     var after = document.getElementById('htBillingDayBlock') || document.getElementById('htMasterContactBlock') || document.getElementById('htV39ProfileBlock') || profile;
     var parent = after.parentNode || profile;
+    // Se já existe o bloco de pagamento, não reescreve o HTML (fim do pisca-pisca)
+    if (document.getElementById('htStudentPayBlock')) {
+      try {
+        var pay = document.getElementById('htStudentPayBlock');
+        var bill = document.getElementById('htBillingDayBlock');
+        if (bill && pay && bill.nextSibling !== pay) bill.parentNode.insertBefore(pay, bill.nextSibling);
+      } catch (e0) {}
+      return;
+    }
     renderPayBlock(parent);
-    // Posiciona só na criação (uma vez)
     try {
       var pay = document.getElementById('htStudentPayBlock');
       var bill = document.getElementById('htBillingDayBlock');
-      var contact = document.getElementById('htMasterContactBlock');
-      if (bill && pay) {
-        // ordem: billing -> pagamento -> suporte
-        if (bill.nextSibling !== pay) bill.parentNode.insertBefore(pay, bill.nextSibling);
-        if (contact && pay.nextSibling !== contact) pay.parentNode.insertBefore(contact, pay.nextSibling);
-      }
+      if (bill && pay && bill.nextSibling !== pay) bill.parentNode.insertBefore(pay, bill.nextSibling);
     } catch (e) {}
   }
 
@@ -22681,14 +22639,8 @@ console.log("[HT] Catraca: onclick inline only (global capture disabled)");
   };
   try {
     var p = document.getElementById('profile');
-    if (p && !p.__htPayWatch) {
-      p.__htPayWatch = true;
-      var lastPayActive = false;
-      new MutationObserver(function () {
-        var now = p.classList.contains('active');
-        if (now && !lastPayActive) setTimeout(place, 100);
-        lastPayActive = now;
-      }).observe(p, { attributes: true, attributeFilter: ['class'] });
+    if (p) {
+      new MutationObserver(function () { if (p.classList.contains('active')) setTimeout(place, 100); }).observe(p, { attributes: true, attributeFilter: ['class'] });
     }
   } catch (e) {}
   setTimeout(place, 800);
@@ -22877,34 +22829,11 @@ console.log("[HT] Catraca: onclick inline only (global capture disabled)");
   'use strict';
   function forceVisible(id){
     var el=document.getElementById(id);
-    if(!el || el.__htForceBusy) return;
-    el.__htForceBusy = true;
-    try{
-      if(!el.classList.contains('show')){
-        // só esconde se ainda estiver visível (evita loop de style)
-        if(el.style.display !== 'none'){
-          el.style.display = 'none';
-          el.style.pointerEvents = 'none';
-        }
-        return;
-      }
-      if(id==='dayCelebrate'){
-        var tok=window.__htShareToken;
-        var ok=!!(window.__htShareAllowed||window.__htWeeklyShareActive||(tok&&tok.t&&(Date.now()-tok.t)<5*60*1000));
-        if(!ok){
-          el.classList.remove('show');
-          el.style.display = 'none';
-          el.style.pointerEvents = 'none';
-          return;
-        }
-      }
-      var want = (id==='celebrate') ? 'grid' : 'flex';
-      if(el.style.display !== want) el.style.display = want;
-      el.style.visibility = 'visible';
-      el.style.pointerEvents = 'auto';
-    }finally{
-      // libera no próximo frame
-      setTimeout(function(){ el.__htForceBusy = false; }, 0);
+    if(!el) return;
+    if(el.classList.contains('show')){
+      el.style.display = (id==='celebrate') ? 'grid' : 'flex';
+      el.style.visibility='visible';
+      el.style.pointerEvents='auto';
     }
   }
   function repair(){
@@ -22912,16 +22841,22 @@ console.log("[HT] Catraca: onclick inline only (global capture disabled)");
     forceVisible('celebrate');
     forceVisible('dayCelebrate');
     forceVisible('monthEndModal');
+    var dots=document.getElementById('seriesDots');
+    if(dots){
+      dots.querySelectorAll('.seriesDot').forEach(function(d){
+        d.style.pointerEvents='auto';
+        d.style.touchAction='manipulation';
+      });
+    }
   }
-  // SÓ observa class — NUNCA style (style + observer = freeze)
+  // Corrige imediatamente quando qualquer uma das telas críticas recebe .show.
   ['restOverlay','celebrate','dayCelebrate','monthEndModal'].forEach(function(id){
     var el=document.getElementById(id);
-    if(!el || el.__htClassObs) return;
-    el.__htClassObs = true;
-    new MutationObserver(function(){ forceVisible(id); }).observe(el,{attributes:true,attributeFilter:['class']});
+    if(!el) return;
+    new MutationObserver(function(){ forceVisible(id); }).observe(el,{attributes:true,attributeFilter:['class','style']});
   });
   document.addEventListener('DOMContentLoaded',repair);
-  setTimeout(repair,100);
+  setTimeout(repair,50); setTimeout(repair,300); setTimeout(repair,1000);
 })();
 </script>
 
@@ -22992,16 +22927,6 @@ console.log("[HT] Catraca: onclick inline only (global capture disabled)");
   }
 
   function openShareUI() {
-    // NÃO abrir compartilhamento sem autorização (evita cobrir treino/série/timer/nav)
-    try {
-      var tok = window.__htShareToken;
-      var ok = !!(window.__htShareAllowed || window.__htWeeklyShareActive || (tok && tok.t && (Date.now()-tok.t)<5*60*1000));
-      if (!ok) return;
-      var ad = document.getElementById('admin');
-      if (ad && (ad.classList.contains('active') || ad.classList.contains('editor-open'))) return;
-      var gm = document.getElementById('gmRoot');
-      if (gm && gm.classList.contains('show')) return;
-    } catch (e0) { return; }
     try {
       if (typeof htEnsureDayCelebrateOpen === 'function') htEnsureDayCelebrateOpen();
     } catch (e) {}
@@ -24590,11 +24515,10 @@ function htOpenWeeklyCelebrate(){
   if(img){ img.style.display='none'; try{img.removeAttribute('src');}catch(e){} }
   if(ph) ph.style.display='flex';
   try{ setPhotoChrome(false); }catch(e){}
-  window.__htWeeklyShareActive = true;
-  window.__htShareAllowed = true;
   var dayEl=document.getElementById('dayCelebrate');
-  if(dayEl){ dayEl.classList.remove('ht-blocked-by-admin'); dayEl.classList.add('show'); dayEl.style.display='flex'; dayEl.style.visibility='visible'; dayEl.style.pointerEvents='auto'; }
+  if(dayEl){ dayEl.classList.add('show'); dayEl.style.display='flex'; dayEl.style.visibility='visible'; dayEl.style.pointerEvents='auto'; }
   try{ if(typeof renderFrameStrip==='function') renderFrameStrip(); if(typeof selectFrame==='function') selectFrame(currentFrameId); }catch(e){}
+  window.__htWeeklyShareActive = true;
   htInjectPostRankButton();
 }
 function htInjectPostRankButton(){
@@ -24942,7 +24866,7 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
   };
 
   /* Envolve a conclusão do exercício para registrar carga/séries e verificar a semana. */
-  if(typeof window.completeCurrent==='function' && !window.completeCurrent.__htV44){
+  if(false && typeof window.completeCurrent==='function' && !window.completeCurrent.__htV44){
     var oldComplete=window.completeCurrent;
     var wrapped=function(){
       try{
@@ -25492,9 +25416,9 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
       '<h3>🧮 Calculadora de BF (% gordura)</h3>'+
       '<p style="font-size:11px;color:#9fb0c5;margin:0 0 10px;line-height:1.4">Preencha os campos e toque em <b>Calcular BF</b>. Com cintura e pescoço o cálculo usa o método US Navy (mais preciso). Sem medidas, usa estimativa por IMC.</p>'+
       '<div class="htEvoGrid" style="margin-bottom:8px">'+
-        '<input id="htBfAge" type="text" inputmode="decimal" enterkeyhint="next" placeholder="Idade (anos)" style="width:100%;padding:12px;background:#050c16;border:1px solid #30415d;color:#fff;border-radius:12px">'+
-        '<input id="htBfHeight" type="text" inputmode="decimal" enterkeyhint="next" placeholder="Altura: 1,72 ou 172" style="width:100%;padding:12px;background:#050c16;border:1px solid #30415d;color:#fff;border-radius:12px">'+
-        '<input id="htBfWeight" type="text" inputmode="decimal" enterkeyhint="next" placeholder="Peso (kg) ex: 75,5" style="width:100%;padding:12px;background:#050c16;border:1px solid #30415d;color:#fff;border-radius:12px">'+
+        '<input id="htBfAge" type="text" inputmode="decimal" placeholder="Idade (anos)">'+
+        '<input id="htBfHeight" type="text" inputmode="decimal" autocomplete="off" placeholder="Altura: 1.72 ou 172">'+
+        '<input id="htBfWeight" type="text" inputmode="decimal" placeholder="Peso (kg)">'+
         '<select id="htBfGender" style="width:100%;padding:12px;background:#050c16;border:1px solid #30415d;color:#fff;border-radius:12px">'+
           '<option value="masculino">Masculino</option>'+
           '<option value="feminino">Feminino</option>'+
@@ -25532,12 +25456,12 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
           return false;
         }
       });
-      // Não filtra durante a digitação (deixa ponto e vírgula livres no celular)
-      el.addEventListener('blur', function(){
-        // só normaliza ao sair do campo
-        var v = String(el.value || '').trim();
-        if(!v) return;
-        // mantém como o usuário digitou; parse acontece no cálculo
+      // Permite digitar ponto e vírgula livremente
+      el.addEventListener('input', function(){
+        var v = String(el.value || '');
+        // não bloquear ponto enquanto digita
+        var cleaned = v.replace(/[^0-9.,]/g,'');
+        if(cleaned !== v) el.value = cleaned;
       });
     });
 
@@ -25566,45 +25490,38 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
     set('htEvoWaist', m.waist); set('htEvoNeck', m.neck); set('htEvoHip', m.hip);
   }
 
-  if(!Math.log10){ Math.log10 = function(x){ return Math.log(x) / Math.LN10; }; }
-  function parseBRNumber(val){
-    if(val==null) return 0;
-    var raw = String(val).trim();
-    if(!raw) return 0;
-    // "1,72" ou "1.72" ou "75,5"
-    raw = raw.replace(/\s/g,'');
-    // se tem vírgula e ponto, assume ponto=milhar e vírgula=decimal (pt-BR)
-    if(raw.indexOf(',')>=0 && raw.indexOf('.')>=0){
-      raw = raw.replace(/\./g,'').replace(',', '.');
-    } else {
-      raw = raw.replace(',', '.');
-    }
-    raw = raw.replace(/[^0-9.+-]/g,'');
-    var n = parseFloat(raw);
-    return isFinite(n) ? n : 0;
-  }
   function num(id){
     var el=document.getElementById(id);
     if(!el) return 0;
-    return parseBRNumber(el.value);
+    var raw = String(el.value || '').trim();
+    // aceita vírgula ou ponto
+    raw = raw.replace(/\s/g,'').replace(',', '.');
+    // remove tudo que não for dígito/ponto
+    raw = raw.replace(/[^0-9.]/g,'');
+    // só um ponto
+    var parts = raw.split('.');
+    if(parts.length > 2) raw = parts[0] + '.' + parts.slice(1).join('');
+    if(!raw || raw==='.') return 0;
+    var n = parseFloat(raw);
+    return isFinite(n) ? n : 0;
   }
 
   function heightCm(idPrimary, idFallback){
     var h = num(idPrimary);
     if(!h) h = num(idFallback) || 0;
-    // metros → cm
-    if(h > 0 && h < 3) h = h * 100;
+    // 1.72 / 1,72 = metros → cm ; 172 = já cm
+    if(h > 0 && h <= 2.5) h = Math.round(h * 1000) / 10; // 1.72 → 172
     return h;
   }
 
   function runBfCalc(){
+    // Nunca navegar para compartilhamento a partir da calculadora
     try{
       var celeb=document.getElementById('dayCelebrate');
       if(celeb){ celeb.classList.remove('show'); celeb.style.display='none'; }
       window.__htWeeklyShareActive=false;
-      window.__htShareAllowed=false;
       window.__htBlockShareFromEvo=true;
-      setTimeout(function(){ window.__htBlockShareFromEvo=false; }, 3000);
+      setTimeout(function(){ window.__htBlockShareFromEvo=false; }, 2000);
     }catch(e){}
     var age = num('htBfAge') || num('htEvoAge') || 30;
     var height = heightCm('htBfHeight', 'htEvoHeight');
@@ -25619,15 +25536,9 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
     var resultBox = document.getElementById('htBfResult');
     if(!resultBox) return;
 
-    if(!height || height < 50){
+    if(!height || height < 100){
       resultBox.style.display='block';
-      resultBox.innerHTML='<b style="color:#ff9dc8">Informe a altura (ex: 1,72 ou 172).</b><br><small style="color:#9fb0c5">Valor lido: '+(height||0)+'</small>';
-      return;
-    }
-    if(height < 100){
-      // provavelmente digitou metros errado; tenta *100 de novo só se < 3 já tratado
-      resultBox.style.display='block';
-      resultBox.innerHTML='<b style="color:#ff9dc8">Altura muito baixa ('+height.toFixed(1)+' cm). Use 1,72 ou 172.</b>';
+      resultBox.innerHTML='<b style="color:#ff9dc8">Informe a altura (cm).</b>';
       return;
     }
 
@@ -26653,11 +26564,15 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
 
   function keepCelebrateOpen(){
     try{
-      // NUNCA forçar compartilhamento — só mantém se já autorizado e NÃO está no admin
-      var ad=document.getElementById('admin');
-      if(ad && (ad.classList.contains('active')||ad.classList.contains('editor-open'))) return;
-      if(!(window.__htShareAllowed || window.__htWeeklyShareActive)) return;
       if(typeof htEnsureDayCelebrateOpen==='function') htEnsureDayCelebrateOpen();
+      var day = document.getElementById('dayCelebrate');
+      if(day){
+        day.classList.add('show');
+        day.style.display = 'flex';
+        day.style.pointerEvents = 'auto';
+        day.style.visibility = 'visible';
+        day.style.opacity = '1';
+      }
     }catch(e){}
   }
 
@@ -27126,10 +27041,16 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
   /* ---------- SHARE CAMERA: getUserMedia PURO (igual Evolução) ---------- */
   function keepCelebrate(){
     try{
-      var ad=document.getElementById('admin');
-      if(ad && (ad.classList.contains('active')||ad.classList.contains('editor-open'))) return;
-      if(!(window.__htShareAllowed || window.__htWeeklyShareActive)) return;
       if(typeof htEnsureDayCelebrateOpen === 'function') htEnsureDayCelebrateOpen();
+      var day = document.getElementById('dayCelebrate');
+      if(day){
+        day.classList.add('show');
+        day.style.display = 'flex';
+        day.style.pointerEvents = 'auto';
+        day.style.visibility = 'visible';
+        day.style.opacity = '1';
+        day.style.zIndex = '90';
+      }
     }catch(e){}
   }
 
@@ -27490,500 +27411,211 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
 
 
 <!-- ===== HT SHARE GATE: compartilhamento só após 4 exercícios ou ranking liberado ===== -->
-
-
-
-
-
-
-
-
-
-
-
-
-<script id="htFinalShareAndBfFix">
+<script id="htShareGateOnlyWhenAllowed">
 (function(){
   'use strict';
-  var VER = 'HT-FINAL-B-2026';
-
-  /* ---- Token de compartilhamento (só treino completo / ranking) ---- */
-  window.__htShareToken = window.__htShareToken || null;
-  function giveShareToken(reason){
-    window.__htShareToken = { reason: reason||'ok', t: Date.now() };
-    window.__htShareAllowed = true;
-  }
-  function clearShareToken(){
-    window.__htShareToken = null;
-    window.__htShareAllowed = false;
-    window.__htWeeklyShareActive = false;
-  }
-  function hasValidShareToken(){
-    var tok = window.__htShareToken;
-    if(!tok || !tok.t) return false;
-    if(Date.now() - tok.t > 5*60*1000){ clearShareToken(); return false; }
-    return true;
-  }
-  window.htGiveShareToken = giveShareToken;
-  window.htClearShareToken = clearShareToken;
-
-  function panelOpen(){
+  function dayMainDone(){
     try{
-      var ad = document.getElementById('admin');
-      if(ad && (ad.classList.contains('active') || ad.classList.contains('editor-open'))) return true;
-      var gm = document.getElementById('gmRoot');
-      if(gm && gm.classList.contains('show')) return true;
+      if(typeof isDayMainDone==='function' && typeof currentDay!=='undefined')
+        return !!isDayMainDone(currentDay);
     }catch(e){}
     return false;
   }
-
-  function hideShareHard(){
+  function allowed(){
+    if(window.__htBlockShareFromEvo) return false;
+    // Admin / Master / edição de moldura: NUNCA compartilhamento
     try{
+      var ad = document.getElementById('admin');
+      if(ad && ad.classList.contains('active')) return false;
+      if(ad && ad.classList.contains('editor-open')) return false;
+      if(document.getElementById('htV36Studio') && document.getElementById('admin') && document.getElementById('admin').classList.contains('active')) return false;
+      var auth = document.getElementById('authAdminLogin');
+      if(auth && auth.classList.contains('active')) return false;
+    }catch(e){}
+    // Só flags explícitas — NÃO abrir só porque o dia está completo
+    if(window.__htShareAllowed) return true;
+    if(window.__htWeeklyShareActive) return true;
+    return false;
+  }
+  function closeShare(force){
+    try{
+      if(!force && allowed()) return;
       var day = document.getElementById('dayCelebrate');
       if(!day) return;
-      day.classList.remove('show');
-      day.style.setProperty('display','none','important');
-      day.style.setProperty('pointer-events','none','important');
-      day.style.setProperty('visibility','hidden','important');
-      day.style.setProperty('opacity','0','important');
-      day.style.setProperty('z-index','-1','important');
+      if(day.classList.contains('show') || day.style.display === 'flex'){
+        day.classList.remove('show');
+        day.style.display = 'none';
+        day.style.pointerEvents = 'none';
+        day.style.visibility = 'hidden';
+      }
     }catch(e){}
   }
-
-  function hideStuckOverlays(){
-    // NÃO fecha celebrate/rest se estiverem legítimos — só se dayCelebrate vazar
-    if(panelOpen()) hideShareHard();
-    else if(!hasValidShareToken()){
-      var day = document.getElementById('dayCelebrate');
-      if(day && day.classList.contains('show')) hideShareHard();
-    }
-  }
-
-  /* ---- openDayCelebrate: exige token ---- */
-  function installOpenGate(){
-    if(typeof window.openDayCelebrate !== 'function') return;
-    if(window.openDayCelebrate.__htFinalB) return;
-    var prev = window.openDayCelebrate;
-    window.openDayCelebrate = function(){
-      try{
-        if(panelOpen()){ hideShareHard(); return; }
-        // se ainda não tem token, cria só se flag explícita de completeCurrent
-        if(!hasValidShareToken()){
-          if(window.__htShareAllowed || window.__htWeeklyShareActive){
-            giveShareToken(window.__htWeeklyShareActive ? 'ranking' : 'day-complete');
-          } else {
-            hideShareHard();
-            return;
-          }
-        }
-        return prev.apply(this, arguments);
-      }catch(e){ try{ console.warn(e); }catch(_){} }
-    };
-    window.openDayCelebrate.__htFinalB = true;
-  }
-
-  /* ---- completeCurrent: NÃO quebrar o botão ---- */
-  function installComplete(){
-    if(typeof window.completeCurrent !== 'function') return;
-    if(window.completeCurrent.__htFinalB) return;
-    var prev = window.completeCurrent;
-    window.completeCurrent = function(){
-      try{
-        // Antes: se for o 4º exercício, autoriza share
-        try{
-          var d = (typeof days!=='undefined' && typeof currentDay!=='undefined') ? days[currentDay] : null;
-          var willCompleteDay = false;
-          if(typeof isDayMainDone==='function' && typeof currentDay!=='undefined'){
-            // após setExDone o original marca; aqui só prepara token se já 3 feitos e este é o 4º
-            // deixa o original setar flags; garantimos token logo após
-          }
-        }catch(e0){}
-        var ret = prev.apply(this, arguments);
-        // Depois: se o original abriu share / setou flag, garante token
-        try{
-          if(window.__htShareAllowed || window.__htWeeklyShareActive){
-            giveShareToken(window.__htWeeklyShareActive ? 'ranking' : 'day-complete');
-          }
-          // se dayCelebrate ganhou .show sem token, fecha
-          if(!hasValidShareToken()){
-            var day=document.getElementById('dayCelebrate');
-            if(day && day.classList.contains('show')) hideShareHard();
-          }
-        }catch(e1){}
-        return ret;
-      }catch(err){
-        try{ console.warn('[HT] completeCurrent error', err); }catch(_){}
-        // fallback: tenta original de novo sem wrapper logic
-        try{ return prev.apply(this, arguments); }catch(e2){ alert('Erro ao concluir: '+(err&&err.message||err)); }
+  // Reescreve keepCelebrate helpers usados pelas câmeras
+  function wrapEnsure(){
+    var prev = window.htEnsureDayCelebrateOpen;
+    window.htEnsureDayCelebrateOpen = function(){
+      if(!allowed()){ closeShare(true); return; }
+      if(typeof prev === 'function'){
+        try{ return prev.apply(this, arguments); }catch(e){}
       }
     };
-    window.completeCurrent.__htFinalB = true;
-    // expõe também no escopo onclick inline
-    try{ window.completeCurrent = window.completeCurrent; }catch(e){}
   }
-
-  function installWeekly(){
-    if(typeof window.htOpenWeeklyCelebrate !== 'function' || window.htOpenWeeklyCelebrate.__htFinalB) return;
-    var prev = window.htOpenWeeklyCelebrate;
-    window.htOpenWeeklyCelebrate = function(){
-      giveShareToken('ranking');
-      window.__htWeeklyShareActive = true;
+  function wrapOpen(){
+    if(typeof window.openDayCelebrate !== 'function') return;
+    if(window.openDayCelebrate.__htGated) return;
+    var prev = window.openDayCelebrate;
+    window.openDayCelebrate = function(){
+      var dayOk = dayMainDone();
+      var rankOk = !!(window.__htWeeklyShareActive || window.__htShareAllowed);
+      if(!dayOk && !rankOk){
+        try{ console.log('[HT ShareGate] bloqueado'); }catch(e){}
+        return;
+      }
       window.__htShareAllowed = true;
       return prev.apply(this, arguments);
     };
-    window.htOpenWeeklyCelebrate.__htFinalB = true;
+    window.openDayCelebrate.__htGated = true;
   }
-
-  function installEnsure(){
-    window.htEnsureDayCelebrateOpen = function(){
-      if(panelOpen()){ hideShareHard(); return; }
-      if(!hasValidShareToken()){ hideShareHard(); return; }
-      try{
-        var day=document.getElementById('dayCelebrate');
-        if(!day) return;
-        day.classList.add('show');
-        day.style.setProperty('display','flex','important');
-        day.style.setProperty('pointer-events','auto','important');
-        day.style.setProperty('visibility','visible','important');
-        day.style.setProperty('opacity','1','important');
-        day.style.setProperty('z-index','90','important');
-      }catch(e){}
-    };
-  }
-
-  function installClose(){
-    if(typeof window.closeDayCelebrate==='function' && !window.closeDayCelebrate.__htFinalB){
-      var prev=window.closeDayCelebrate;
-      window.closeDayCelebrate=function(){
-        clearShareToken();
-        hideShareHard();
-        try{ return prev.apply(this,arguments); }catch(e){}
-      };
-      window.closeDayCelebrate.__htFinalB=true;
-    }
-  }
-
-  /* ---- BF ---- */
-  function parseNum(v){
-    if(v==null) return NaN;
-    var s=String(v).trim().replace(/\s/g,'');
-    if(!s) return NaN;
-    if(s.indexOf(',')>=0 && s.indexOf('.')>=0) s=s.replace(/\./g,'').replace(',','.');
-    else s=s.replace(',','.');
-    s=s.replace(/[^0-9.+-]/g,'');
-    return parseFloat(s);
-  }
-  function ensureBf(){
-    var pane=document.getElementById('htPaneExames');
-    if(!pane) return;
-    var card=document.getElementById('htBfCalcCard');
-    if(!card){
-      card=document.createElement('div');
-      card.id='htBfCalcCard';
-      card.className='htEvoSection';
-      card.innerHTML='<h3>🧮 Calculadora de BF (% gordura)</h3>'+
-        '<p style="font-size:11px;color:#9fb0c5;margin:0 0 10px">Altura: <b>1,72</b> ou <b>172</b>. Ponto ou vírgula.</p>'+
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
-        '<input id="htBfAge" type="text" inputmode="decimal" placeholder="Idade" style="padding:12px;background:#050c16;border:1px solid #30415d;color:#fff;border-radius:12px">'+
-        '<input id="htBfHeight" type="text" inputmode="decimal" placeholder="Altura 1,72 ou 172" style="padding:12px;background:#050c16;border:1px solid #30415d;color:#fff;border-radius:12px">'+
-        '<input id="htBfWeight" type="text" inputmode="decimal" placeholder="Peso kg" style="padding:12px;background:#050c16;border:1px solid #30415d;color:#fff;border-radius:12px">'+
-        '<select id="htBfGender" style="padding:12px;background:#050c16;border:1px solid #30415d;color:#fff;border-radius:12px"><option value="masculino">Masculino</option><option value="feminino">Feminino</option></select>'+
-        '<input id="htBfWaist" type="text" inputmode="decimal" placeholder="Cintura cm" style="padding:12px;background:#050c16;border:1px solid #30415d;color:#fff;border-radius:12px">'+
-        '<input id="htBfNeck" type="text" inputmode="decimal" placeholder="Pescoço cm" style="padding:12px;background:#050c16;border:1px solid #30415d;color:#fff;border-radius:12px">'+
-        '<input id="htBfHip" type="text" inputmode="decimal" placeholder="Quadril cm" style="padding:12px;background:#050c16;border:1px solid #30415d;color:#fff;border-radius:12px;grid-column:1/-1">'+
-        '</div><button type="button" class="htBtn" id="htBfCalcBtn" style="width:100%;margin-top:8px">Calcular BF</button>'+
-        '<div id="htBfResult" style="display:none;margin-top:12px;padding:14px;border-radius:14px;background:#0a1a12;border:1px solid #20e08355;text-align:center"></div>';
-      pane.insertBefore(card, pane.firstChild);
-    }
-    var btn=document.getElementById('htBfCalcBtn');
-    if(btn){
-      btn.onclick=function(ev){ if(ev){ev.preventDefault();ev.stopPropagation();} runBf(); return false; };
-    }
-    ['htBfAge','htBfHeight','htBfWeight','htBfWaist','htBfNeck','htBfHip'].forEach(function(id){
-      var el=document.getElementById(id); if(!el) return;
-      try{ el.type='text'; el.setAttribute('inputmode','decimal'); }catch(e){}
-    });
-  }
-  function runBf(){
-    var log10=Math.log10||function(x){return Math.log(x)/Math.LN10;};
-    function v(id){ var el=document.getElementById(id); return el?parseNum(el.value):NaN; }
-    var age=v('htBfAge'); if(!isFinite(age)||age<=0) age=30;
-    var height=v('htBfHeight'), weight=v('htBfWeight'), waist=v('htBfWaist'), neck=v('htBfNeck'), hip=v('htBfHip');
-    var isF=(document.getElementById('htBfGender')||{}).value==='feminino';
-    var box=document.getElementById('htBfResult'); if(!box) return;
-    if(isFinite(height)&&height>0&&height<3) height=height*100;
-    if(!isFinite(height)||height<100){ box.style.display='block'; box.innerHTML='<b style="color:#ff9dc8">Informe a altura (1,72 ou 172).</b>'; return; }
-    var bf=null, method='';
-    try{
-      if(isFinite(waist)&&isFinite(neck)&&waist>neck){
-        if(isF && isFinite(hip)&&hip>0){ bf=495/(1.29579-0.35004*log10(waist+hip-neck)+0.221*log10(height))-450; method='US Navy'; }
-        else if(!isF){ bf=495/(1.0324-0.19077*log10(waist-neck)+0.15456*log10(height))-450; method='US Navy'; }
-        if(!isFinite(bf)||bf<2||bf>70) bf=null;
+  // Observa tentativas de abrir dayCelebrate sem permissão
+  function watch(){
+    var day = document.getElementById('dayCelebrate');
+    if(!day || day.__htShareGateObs) return;
+    day.__htShareGateObs = true;
+    new MutationObserver(function(){
+      if(day.classList.contains('show') && !allowed()){
+        closeShare(true);
       }
-    }catch(e){ bf=null; }
-    if(bf===null){
-      if(!isFinite(weight)||weight<25){ box.style.display='block'; box.innerHTML='<b style="color:#ff9dc8">Informe peso ou cintura/pescoço.</b>'; return; }
-      var hM=height/100, bmi=weight/(hM*hM), sex=isF?0:1;
-      bf=1.20*bmi+0.23*age-10.8*sex-5.4; method='Estimativa por IMC';
-    }
-    bf=Math.round(bf*10)/10;
-    box.style.display='block';
-    box.innerHTML='<div style="font-size:12px;color:#9fb0c5">Seu BF estimado</div><div style="font-size:36px;font-weight:950;color:#20e083">'+bf+'%</div><div style="font-size:10px;color:#9fb0c5;margin-top:8px">'+method+' · altura '+Math.round(height)+' cm</div>';
-    try{
-      if(typeof state!=='undefined'&&state){ state.evolution=state.evolution||{}; state.evolution.bodyFat=bf; if(typeof save==='function') save(); }
-      if(typeof toast==='function') toast('BF: '+bf+'%');
-    }catch(e){}
+    }).observe(day, {attributes:true, attributeFilter:['class','style']});
   }
-
+  // Botão ranking: ao abrir share, autoriza
+  function wireRankBtn(){
+    var btn = document.getElementById('htRankShareBtn');
+    if(!btn || btn.__htShareGate) return;
+    btn.__htShareGate = true;
+    btn.addEventListener('click', function(){
+      try{ window.__htShareAllowed = true; window.__htWeeklyShareActive = true; }catch(e){}
+    }, true);
+  }
   function boot(){
-    installOpenGate();
-    installComplete();
-    installWeekly();
-    installEnsure();
-    installClose();
-    ensureBf();
-    hideStuckOverlays();
-    // Garante que completeCurrent global existe para onclick inline
-    if(typeof window.completeCurrent==='function'){
-      try{ /* noop */ }catch(e){}
-    }
+    wrapEnsure();
+    wrapOpen();
+    watch();
+    wireRankBtn();
   }
-
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot, 80); });
-  else setTimeout(boot, 80);
-  // Reinstala só se outro script sobrescrever (sem reembrulhar em loop)
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot,100); });
+  else setTimeout(boot,100);
   setInterval(function(){
     try{
-      if(typeof window.completeCurrent==='function' && !window.completeCurrent.__htFinalB) installComplete();
-      if(typeof window.openDayCelebrate==='function' && !window.openDayCelebrate.__htFinalB) installOpenGate();
-      // BF só se a tela evolução estiver ativa
-      var evo=document.getElementById('evolution');
-      if(evo && evo.classList.contains('active')) ensureBf();
-      hideStuckOverlays();
+      wrapEnsure(); wrapOpen(); wireRankBtn();
+      // se share aberto ilegalmente, fecha
+      if(!allowed()) closeShare(true);
     }catch(e){}
-  }, 4000);
-
-  try{ console.log('['+VER+'] completeCurrent safe + share gate + BF'); }catch(e){}
+  }, 1200);
+  try{ console.log('[HT ShareGate] ativo — só 4 exercícios ou ranking'); }catch(e){}
 })();
 </script>
 
 
-
-
-
-<script id="htClickUnlockFinal">
+<script id="htNeverShareOnAdmin">
 (function(){
-  'use strict';
-  function hideShareIfUnauthorized(){
+  function closeShareHard(){
     try{
-      var tok = window.__htShareToken;
-      var ok = !!(window.__htShareAllowed || window.__htWeeklyShareActive || (tok && tok.t && (Date.now()-tok.t) < 5*60*1000));
+      window.__htShareAllowed = false;
+      window.__htWeeklyShareActive = false;
       var day = document.getElementById('dayCelebrate');
-      if(!day) return;
-      if(!ok && day.classList.contains('show')){
+      if(day){
         day.classList.remove('show');
-      }
-      if(!ok){
         day.style.display = 'none';
         day.style.pointerEvents = 'none';
-        try{ localStorage.removeItem('htShareOpenV9'); sessionStorage.removeItem('htShareOpenV9'); }catch(e){}
+        day.style.visibility = 'hidden';
       }
     }catch(e){}
   }
-  function unlockUi(){
+  function isAdminView(){
     try{
-      document.body.style.pointerEvents = 'auto';
-      var bottom = document.getElementById('bottom');
-      if(bottom){
-        var wel = document.getElementById('authWelcome');
-        var admin = document.getElementById('admin');
-        var gm = document.getElementById('gmRoot');
-        var hide = (wel && wel.classList.contains('active')) || (admin && admin.classList.contains('active')) || (gm && gm.classList.contains('show'));
-        if(!hide){
-          bottom.style.display = 'flex';
-          bottom.style.pointerEvents = 'auto';
-          bottom.style.zIndex = '1200';
+      var ad = document.getElementById('admin');
+      if(ad && ad.classList.contains('active')) return true;
+      if(ad && ad.classList.contains('editor-open')) return true;
+    }catch(e){}
+    return false;
+  }
+  setInterval(function(){
+    if(isAdminView()) closeShareHard();
+  }, 600);
+  // Patch adminShowPanel
+  function patch(){
+    if(typeof window.adminShowPanel === 'function' && !window.adminShowPanel.__htNoShare){
+      var prev = window.adminShowPanel;
+      window.adminShowPanel = function(){
+        closeShareHard();
+        return prev.apply(this, arguments);
+      };
+      window.adminShowPanel.__htNoShare = true;
+    }
+    if(typeof window.buildStudio === 'function' && !window.buildStudio.__htNoShare){
+      var prevB = window.buildStudio;
+      window.buildStudio = function(){
+        closeShareHard();
+        return prevB.apply(this, arguments);
+      };
+      window.buildStudio.__htNoShare = true;
+    }
+  }
+  patch();
+  setInterval(patch, 1500);
+  try{ console.log('[HT] Never share on admin/master'); }catch(e){}
+})();
+</script>
+
+
+<script id="htCompleteFromWorking">
+(function(){
+  'use strict';
+  function rebind(){
+    try{
+      // Sempre usa a declaração global simples se existir
+      if(typeof completeCurrent === 'function'){
+        window.completeCurrent = completeCurrent;
+      }
+      var btn = document.getElementById('htBtnCompleteEx');
+      if(!btn){
+        // fallback: qualquer .bigBtn dentro de #detail com texto Concluir
+        var list = document.querySelectorAll('#detail button.bigBtn');
+        for(var i=0;i<list.length;i++){
+          if((list[i].textContent||'').indexOf('Concluir')>=0){ btn=list[i]; break; }
         }
       }
-      // garante funções de treino no window
-      try{
-        if(typeof openExercise==='function') window.openExercise = openExercise;
-        if(typeof openDay==='function') window.openDay = openDay;
-        if(typeof renderWorkout==='function') window.renderWorkout = renderWorkout;
-        if(typeof markSetDone==='function') window.markSetDone = markSetDone;
-        if(typeof startRestTimer==='function') window.startRestTimer = startRestTimer;
-        if(typeof onSeriesDotClick==='function') window.onSeriesDotClick = onSeriesDotClick;
-        if(typeof completeCurrent==='function') window.completeCurrent = completeCurrent;
-      }catch(e){}
-    }catch(e){}
-  }
-  function once(){
-    hideShareIfUnauthorized();
-    unlockUi();
-  }
-  setTimeout(once, 200);
-  setTimeout(once, 1500);
-  // raro — não a cada 2s (causava travamento)
-  setInterval(once, 8000);
-
-  // Ao abrir treino, só esconde share residual (leve)
-  if(typeof window.show==='function' && !window.show.__htClickUnlock){
-    var prev = window.show;
-    window.show = function(id){
-      var r = prev.apply(this, arguments);
-      if(id==='detail' || id==='workout' || id==='home'){
+      if(!btn) return;
+      btn.type = 'button';
+      btn.style.pointerEvents = 'auto';
+      btn.style.position = 'relative';
+      btn.style.zIndex = '40';
+      btn.onclick = function(ev){
+        if(ev){ try{ ev.preventDefault(); ev.stopPropagation(); }catch(e){} }
         try{
-          var tok = window.__htShareToken;
-          var fresh = tok && tok.t && (Date.now()-tok.t) < 4000;
-          if(!fresh){
-            window.__htShareAllowed = false;
-            window.__htWeeklyShareActive = false;
-            window.__htShareToken = null;
-            var day = document.getElementById('dayCelebrate');
-            if(day){ day.classList.remove('show'); day.style.display='none'; day.style.pointerEvents='none'; }
-          }
-        }catch(e){}
-      }
-      setTimeout(unlockUi, 30);
+          if(typeof window.completeCurrent === 'function') window.completeCurrent();
+          else if(typeof completeCurrent === 'function') completeCurrent();
+          else alert('completeCurrent ausente');
+        }catch(e){ alert(e); }
+        return false;
+      };
+    }catch(e){ console.warn('[HT complete]', e); }
+  }
+  function boot(){ rebind(); }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot,50); });
+  else setTimeout(boot,50);
+  setTimeout(boot,400);
+  setTimeout(boot,1500);
+  if(typeof window.show==='function' && !window.show.__htCompleteWorking){
+    var prev=window.show;
+    window.show=function(id){
+      var r=prev.apply(this,arguments);
+      if(id==='detail'||id==='workout') setTimeout(rebind,20);
       return r;
     };
-    window.show.__htClickUnlock = true;
+    window.show.__htCompleteWorking=true;
   }
-
-  // Clique nos exercícios: delegação de segurança se onclick sumir
-  document.addEventListener('click', function(ev){
-    try{
-      var t = ev.target;
-      if(!t || !t.closest) return;
-      var ex = t.closest('button.exercise');
-      if(ex && ex.parentElement && ex.parentElement.id==='exerciseList'){
-        // se o handler nativo falhar, tenta pelo índice
-        if(!ex.onclick && window.openExercise){
-          var list = document.querySelectorAll('#exerciseList button.exercise');
-          for(var i=0;i<list.length;i++){
-            if(list[i]===ex){ window.openExercise(i); break; }
-          }
-        }
-      }
-    }catch(e){}
-  }, true);
-
-  try{ console.log('[HT] Click unlock light — no freeze'); }catch(e){}
-})();
-</script>
-
-
-<script id="htWorkoutButtonsFix">
-(function(){
-  'use strict';
-  function bindWorkoutButtons(){
-    try{
-      // reexporta funções principais
-      if(typeof completeCurrent==='function') window.completeCurrent = completeCurrent;
-      if(typeof markSetDone==='function') window.markSetDone = markSetDone;
-      if(typeof startRestTimer==='function') window.startRestTimer = startRestTimer;
-      if(typeof onSeriesDotClick==='function') window.onSeriesDotClick = onSeriesDotClick;
-      if(typeof openExercise==='function') window.openExercise = openExercise;
-      if(typeof closeCelebrate==='function') window.closeCelebrate = closeCelebrate;
-      if(typeof openDayCelebrate==='function') window.openDayCelebrate = openDayCelebrate;
-
-      var doneBtn = document.getElementById('htBtnCompleteEx');
-      if(doneBtn && !doneBtn.__htBound){
-        doneBtn.__htBound = true;
-        doneBtn.addEventListener('click', function(ev){
-          ev.preventDefault();
-          ev.stopPropagation();
-          try{ window.completeCurrent(); }catch(e){ alert(e); }
-          return false;
-        }, true);
-      }
-      // botões de série / timer por seletor (caso onclick quebre)
-      var seriesBtns = document.querySelectorAll('.seriesBtns button');
-      seriesBtns.forEach(function(btn){
-        if(btn.__htBound) return;
-        btn.__htBound = true;
-        btn.addEventListener('click', function(ev){
-          try{
-            if(btn.classList.contains('restBtn') || (btn.textContent||'').indexOf('Descanso')>=0){
-              ev.preventDefault();
-              if(typeof window.startRestTimer==='function') window.startRestTimer();
-            } else if(btn.classList.contains('doneSetBtn') || (btn.textContent||'').indexOf('Série')>=0){
-              ev.preventDefault();
-              if(typeof window.markSetDone==='function') window.markSetDone();
-            }
-          }catch(e){ console.warn(e); }
-        }, true);
-      });
-    }catch(e){ console.warn('[HT bindWorkout]', e); }
-  }
-
-  // Garante que rest overlay fecha e não fica fantasma
-  function ensureRestCloseable(){
-    try{
-      var ov = document.getElementById('restOverlay');
-      if(!ov) return;
-      if(!ov.classList.contains('show')){
-        ov.style.display = 'none';
-        ov.style.pointerEvents = 'none';
-      }
-    }catch(e){}
-  }
-
-  // Fecha share residual sem token (leve, 1x ao carregar e ao mudar tela)
-  function hideUnauthorizedShare(){
-    try{
-      var tok = window.__htShareToken;
-      var ok = !!(window.__htShareAllowed || window.__htWeeklyShareActive || (tok && tok.t && Date.now()-tok.t < 5*60*1000));
-      var day = document.getElementById('dayCelebrate');
-      if(day && !ok){
-        day.classList.remove('show');
-        day.style.display = 'none';
-        day.style.pointerEvents = 'none';
-      }
-    }catch(e){}
-  }
-
-  function boot(){
-    bindWorkoutButtons();
-    hideUnauthorizedShare();
-    ensureRestCloseable();
-  }
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot, 100); });
-  else setTimeout(boot, 100);
-  setTimeout(boot, 800);
-  // rebind raro (não agressivo)
-  setInterval(function(){ bindWorkoutButtons(); ensureRestCloseable(); }, 6000);
-
-  if(typeof window.show==='function' && !window.show.__htWorkoutFix){
-    var prev = window.show;
-    window.show = function(id){
-      var r = prev.apply(this, arguments);
-      setTimeout(function(){
-        bindWorkoutButtons();
-        if(id==='detail'||id==='workout'||id==='home'){
-          // não limpa token fresco (acabou de concluir o dia)
-          try{
-            var tok=window.__htShareToken;
-            var fresh=tok&&tok.t&&(Date.now()-tok.t)<5000;
-            if(!fresh && id!=='detail'){ /* keep */ }
-            if(id==='workout'||id==='home'){
-              if(!fresh){
-                // só limpa share se não acabou de completar
-                var day=document.getElementById('dayCelebrate');
-                if(day && !day.classList.contains('show')){
-                  window.__htShareAllowed=false;
-                }
-              }
-            }
-          }catch(e){}
-        }
-      }, 40);
-      return r;
-    };
-    window.show.__htWorkoutFix = true;
-  }
-
-  try{ console.log('[HT] Workout buttons fix'); }catch(e){}
+  try{ console.log('[HT] completeCurrent da versão que funcionava'); }catch(e){}
 })();
 </script>
 
