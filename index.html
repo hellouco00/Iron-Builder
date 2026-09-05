@@ -18653,7 +18653,22 @@ if (tab === 'uso') {
 
   
   // —— Aplicar rodapé de share (Master + academia do aluno) ——
+  if(!window._gmBaseGetShareUrl && typeof window.getShareUrl==='function'){
+    window._gmBaseGetShareUrl = window.getShareUrl;
+  }
   window.gmResolveShareCfg = function(){
+    if(window._gmResolvingShareCfg){
+      // Evita recursão infinita: retorna um cfg mínimo caso já estejamos no meio de uma resolução
+      return { name:'Helton Training', academyName:'', link:(typeof window._gmBaseGetShareUrl==='function'?window._gmBaseGetShareUrl():''), contact:'', dev:'', pos:'bottom', bg:'none', showAcademy:true };
+    }
+    window._gmResolvingShareCfg = true;
+    try{
+      return window._gmResolveShareCfgImpl();
+    } finally {
+      window._gmResolvingShareCfg = false;
+    }
+  };
+  window._gmResolveShareCfgImpl = function(){
     var cfg = {
       name: 'Helton Training',
       academyName: '',
@@ -18669,7 +18684,7 @@ if (tab === 'uso') {
       var d = raw ? JSON.parse(raw) : null;
       var mb = (d && d.masterBranding) || {};
       cfg.name = mb.shareFooterName || (typeof getAppName==='function'?getAppName():'Helton Training') || 'Helton Training';
-      cfg.link = mb.shareLink || (typeof getShareUrl==='function'?getShareUrl():'') || '';
+      cfg.link = mb.shareLink || (typeof window._gmBaseGetShareUrl==='function'?window._gmBaseGetShareUrl():(typeof getShareUrl==='function'?getShareUrl():'')) || '';
       cfg.contact = mb.developerContact || '';
       cfg.dev = mb.developedBy || '';
       cfg.pos = mb.sharePos || 'bottom';
