@@ -3852,6 +3852,7 @@ function applyFrameGeometry(){
   const link=document.getElementById('shareAchievementLink');if(link){link.href=APP_SHARE_URL;link.textContent=APP_SHARE_URL.replace(/^https?:\/\//,'')}
 }
 function openDayCelebrate(){
+  try{ if(window.__htBlockShareFromEvo){ console.log('[HT] share bloqueado (evolução/BF)'); return; } }catch(e){}
   const d = days[currentDay];
   if(!d) return;
   // ===== MESMA CONTA da tela de início (renderHome) =====
@@ -12349,7 +12350,7 @@ function buildStudio(){
     ' <label>Posição do texto % <b id="v33TextYVal">90</b></label><input type="range" id="v33TextY" min="5" max="95" value="90"/>',
     ' <label>Nome da moldura</label><input id="v33Name" placeholder="Ex: Foto Profissional Academia"/>',
     ' <label>Tipo</label><select id="v33Mode"><option value="solo">Solo</option><option value="casal">Casal</option><option value="grupo">Grupo / Equipe</option></select>',
-    ' <button type="button" class="htPunchBtn" id="v33Punch">🕳️ Furar área do recorte (deixar transparente)</button>',
+    ' <button type="button" class="htPunchBtn" id="v33Punch" type="button" onclick="try{window.htPunchFrame?window.htPunchFrame():punchPreview()}catch(e){alert(e)}">🕳️ Furar área do recorte (deixar transparente)</button>',
     ' <button type="button" class="authBtn green" id="v33Save" style="width:100%;margin-top:10px">💾 Salvar moldura predefinida</button>',
     ' <button type="button" class="authBtn ghost" id="v33Reset" style="width:100%;margin-top:6px">Limpar editor</button>',
     '</div>',
@@ -12599,83 +12600,151 @@ function resetEditor(){
 
 
 function punchPreview(){
-  var art=document.getElementById('v36Art');
-  if(!art||(!art.src && !(FS&& (FS.assetWork||FS.assetOrig||FS.asset)))){
-    toastSafe('Carregue ou edite uma moldura primeiro'); return;
+  function msg(m){
+    try{ if(typeof toast==='function') toast(m); }catch(e){}
+    try{ if(typeof toastSafe==='function') toastSafe(m); }catch(e){}
+    try{ console.log('[FURAR]', m); }catch(e){}
   }
-  toastSafe('Furando área do recorte…');
-  var src = (FS && (FS.assetWork || FS.assetOrig || FS.asset)) || art.src;
-  function finishWith(srcData){
-    var img=new Image();
-    img.onload=function(){
-      try{
-        var w=img.naturalWidth||1080, h=img.naturalHeight||1440;
-        if(w<2||h<2){ toastSafe('Imagem da moldura inválida'); return; }
-        var canvas=document.createElement('canvas');
-        canvas.width=w; canvas.height=h;
-        var ctx=canvas.getContext('2d', {willReadFrequently:true});
-        ctx.drawImage(img,0,0,w,h);
-        var paint=document.getElementById('v36Paint');
-        if(paint&&paint.width){ try{ ctx.drawImage(paint,0,0,w,h); }catch(e){} }
-        var x=(FS.L/100)*w, y=(FS.T/100)*h;
-        var rw=((100-FS.L-FS.R)/100)*w, rh=((100-FS.T-FS.B)/100)*h;
-        if(rw<4) rw=w*0.5; if(rh<4) rh=h*0.4;
-        ctx.save();
-        ctx.translate(x+rw/2, y+rh/2);
-        ctx.rotate(((FS.holeRot||0)*Math.PI)/180);
-        ctx.globalCompositeOperation='destination-out';
-        if(FS.shape==='circle'){
-          ctx.beginPath();
-          ctx.ellipse(0,0,Math.max(2,rw/2),Math.max(2,rh/2),0,0,Math.PI*2);
-          ctx.fill();
-        } else {
-          ctx.fillRect(-rw/2,-rh/2,rw,rh);
+  try{
+    var art = document.getElementById('v36Art') || document.getElementById('v33Art');
+    var src = null;
+    if(typeof FS !== 'undefined'){
+      src = FS.assetWork || FS.assetOrig || FS.assetPunched || FS.asset || null;
+    }
+    if((!src || src==='') && art && art.src) src = art.getAttribute('src') || art.src;
+    if(!src){
+      msg('Envie a arte da moldura ou abra uma moldura da lista antes de furar.');
+      try{ alert('Envie/abra a moldura antes de furar a área.'); }catch(e){}
+      return;
+    }
+    msg('Furando área do recorte…');
+
+    function applyPunch(srcData){
+      var img = new Image();
+      img.onload = function(){
+        try{
+          var w = img.naturalWidth || img.width || 0;
+          var h = img.naturalHeight || img.height || 0;
+          if(w < 4 || h < 4){
+            msg('Imagem da moldura inválida');
+            return;
+          }
+          var L = 12, R = 12, T = 20, B = 28, shape = 'circle', holeRot = 0;
+          try{
+            if(typeof FS !== 'undefined'){
+              L = Number(FS.L); if(!isFinite(L)) L = 12;
+              R = Number(FS.R); if(!isFinite(R)) R = 12;
+              T = Number(FS.T); if(!isFinite(T)) T = 20;
+              B = Number(FS.B); if(!isFinite(B)) B = 28;
+              shape = FS.shape === 'square' || FS.shape === 'rect' ? 'square' : 'circle';
+              holeRot = Number(FS.holeRot) || 0;
+            }
+            // Prefer live sliders if present
+            var elL=document.getElementById('v36L'), elR=document.getElementById('v36R');
+            var elT=document.getElementById('v36T'), elB=document.getElementById('v36B');
+            if(elL) L=Number(elL.value)||L;
+            if(elR) R=Number(elR.value)||R;
+            if(elT) T=Number(elT.value)||T;
+            if(elB) B=Number(elB.value)||B;
+          }catch(e){}
+
+          var canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          var ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+
+          // bake paint layer if any
+          try{
+            var paint = document.getElementById('v36Paint');
+            if(paint && paint.width) ctx.drawImage(paint, 0, 0, w, h);
+          }catch(e){}
+
+          var x = (L/100)*w, y = (T/100)*h;
+          var rw = ((100-L-R)/100)*w, rh = ((100-T-B)/100)*h;
+          if(rw < 8) rw = w * 0.5;
+          if(rh < 8) rh = h * 0.4;
+
+          ctx.save();
+          ctx.translate(x + rw/2, y + rh/2);
+          ctx.rotate(holeRot * Math.PI / 180);
+          ctx.globalCompositeOperation = 'destination-out';
+          if(shape === 'circle'){
+            ctx.beginPath();
+            ctx.ellipse(0, 0, Math.max(4, rw/2), Math.max(4, rh/2), 0, 0, Math.PI*2);
+            ctx.fill();
+          } else {
+            ctx.fillRect(-rw/2, -rh/2, rw, rh);
+          }
+          ctx.restore();
+
+          var out;
+          try{ out = canvas.toDataURL('image/png'); }
+          catch(sec){
+            msg('Falha de segurança ao furar. Envie a arte pelo seletor de arquivo e tente de novo.');
+            try{ alert('Não foi possível furar esta imagem. Envie o arquivo de novo.'); }catch(e){}
+            return;
+          }
+
+          if(art){
+            art.src = out;
+            art.style.display = 'block';
+            art.style.visibility = 'visible';
+            art.style.opacity = '1';
+          }
+          try{
+            FS.assetOrig = out;
+            FS.assetWork = out;
+            FS.asset = out;
+            FS.assetPunched = out;
+          }catch(e){}
+          try{ if(typeof clearPaint==='function') clearPaint(); }catch(e){}
+
+          // checkerboard so transparency is obvious
+          try{
+            var stage = document.getElementById('v36Stage') || document.getElementById('v33Stage');
+            if(stage){
+              stage.style.backgroundColor = '#111';
+              stage.style.backgroundImage = 'linear-gradient(45deg,#333 25%,transparent 25%),linear-gradient(-45deg,#333 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#333 75%),linear-gradient(-45deg,transparent 75%,#333 75%)';
+              stage.style.backgroundSize = '18px 18px';
+              stage.style.backgroundPosition = '0 0,0 9px,9px -9px,-9px 0';
+            }
+          }catch(e){}
+
+          msg('Furo feito! Área transparente no recorte.');
+        }catch(err){
+          try{ console.warn(err); }catch(e){}
+          msg('Erro ao furar a arte');
+          try{ alert('Erro ao furar: ' + (err && err.message ? err.message : err)); }catch(e){}
         }
-        ctx.restore();
-        var out;
-        try{ out=canvas.toDataURL('image/png'); }
-        catch(sec){
-          console.warn('[punchPreview] toDataURL', sec);
-          toastSafe('Não foi possível furar (segurança do navegador). Envie a arte de novo pelo arquivo.');
+      };
+      img.onerror = function(){
+        msg('Não consegui ler a imagem da moldura.');
+        try{ alert('Erro ao carregar a imagem da moldura para furar.'); }catch(e){}
+      };
+      img.src = srcData;
+    }
+
+    if(String(src).indexOf('data:') === 0){
+      applyPunch(src);
+    } else if(typeof htToDataUrl === 'function'){
+      htToDataUrl(src, function(d){
+        if(!d){
+          // last resort: try raw src
+          applyPunch(src);
           return;
         }
-        art.src=out;
-        art.style.display='block';
-        FS.assetOrig=out;
-        FS.assetWork=out;
-        if(typeof FS.asset!=='undefined') FS.asset=out;
-        if(typeof FS.assetPunched!=='undefined') FS.assetPunched=out;
-        try{ if(typeof clearPaint==='function') clearPaint(); }catch(e){}
-        // feedback visual no fundo do estágio
-        try{
-          var stage=document.getElementById('v36Stage');
-          if(stage){
-            stage.style.backgroundImage='linear-gradient(45deg,#222 25%,transparent 25%),linear-gradient(-45deg,#222 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#222 75%),linear-gradient(-45deg,transparent 75%,#222 75%)';
-            stage.style.backgroundSize='16px 16px';
-            stage.style.backgroundPosition='0 0,0 8px,8px -8px,-8px 0';
-            stage.style.backgroundColor='#111';
-          }
-        }catch(e2){}
-        toastSafe('Furo feito · área transparente no recorte');
-      }catch(err){
-        console.warn(err);
-        toastSafe('Erro ao furar a arte');
-      }
-    };
-    img.onerror=function(){ toastSafe('Erro ao furar a arte'); };
-    img.src=srcData;
-  }
-  if(String(src).indexOf('data:')===0){
-    finishWith(src);
-  } else if(typeof htToDataUrl==='function'){
-    htToDataUrl(src, function(d){
-      if(!d){ toastSafe('Não consegui ler a moldura. Envie o arquivo de novo.'); return; }
-      finishWith(d);
-    });
-  } else {
-    finishWith(src);
+        applyPunch(d);
+      });
+    } else {
+      applyPunch(src);
+    }
+  }catch(err){
+    try{ console.warn(err); }catch(e){}
+    try{ alert('Erro no furar: ' + (err && err.message ? err.message : err)); }catch(e){}
   }
 }
+window.htPunchFrame = punchPreview;
+window.punchPreview = punchPreview;
 
 function deleteCurrentFrame(){
   var mode=(document.getElementById('v36Mode')||{}).value||FS.editingMode||'solo';
@@ -13645,7 +13714,7 @@ function buildStudio(){
     ' <input type="range" id="v36TextY" min="5" max="95" value="90"/>',
     ' <label>Nome</label><input id="v36Name" placeholder="Nome da moldura"/>',
     ' <label>Tipo</label><select id="v36Mode"><option value="solo">Solo</option><option value="casal">Casal</option><option value="grupo">Grupo / Equipe</option></select>',
-    ' <button type="button" class="authBtn" id="v36Punch" style="width:100%;margin-top:10px;background:#1a1408;border:1px solid #6d5010;color:#ffd700">🕳️ Furar área do recorte (deixar transparente)</button>',
+    ' <button type="button" class="authBtn" id="v36Punch" type="button" onclick="try{window.htPunchFrame?window.htPunchFrame():punchPreview()}catch(e){alert(e)}" style="width:100%;margin-top:10px;background:#1a1408;border:1px solid #6d5010;color:#ffd700">🕳️ Furar área do recorte (deixar transparente)</button>',
     ' <button type="button" class="authBtn green" id="v36Save" style="width:100%;margin-top:8px">💾 Salvar alterações da moldura</button>',
     ' <button type="button" class="authBtn ghost" id="v36DeleteCurrent" style="width:100%;margin-top:6px;border-color:#6c2944;color:#ff9dc8">🗑️ Excluir esta moldura</button>',
     ' <button type="button" class="authBtn ghost" id="v36Reset" style="width:100%;margin-top:6px">Limpar editor</button>',
@@ -13943,7 +14012,13 @@ function bindStudio(){
   document.getElementById('v36Save').onclick=function(){ saveFrame(); };
   document.getElementById('v36Reset').onclick=function(){ resetEditor(); };
   var punchBtn=document.getElementById('v36Punch');
-  if(punchBtn) punchBtn.onclick=function(){ punchPreview(); };
+  if(punchBtn){
+    punchBtn.onclick=function(ev){
+      if(ev){ try{ev.preventDefault();ev.stopPropagation();}catch(e){} }
+      try{ (window.htPunchFrame||punchPreview)(); }catch(err){ try{alert(err)}catch(e){} }
+      return false;
+    };
+  }
   var delBtn=document.getElementById('v36DeleteCurrent');
   if(delBtn) delBtn.onclick=function(){ deleteCurrentFrame(); };
 
@@ -25107,16 +25182,16 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
       '<h3>🧮 Calculadora de BF (% gordura)</h3>'+
       '<p style="font-size:11px;color:#9fb0c5;margin:0 0 10px;line-height:1.4">Preencha os campos e toque em <b>Calcular BF</b>. Com cintura e pescoço o cálculo usa o método US Navy (mais preciso). Sem medidas, usa estimativa por IMC.</p>'+
       '<div class="htEvoGrid" style="margin-bottom:8px">'+
-        '<input id="htBfAge" type="number" placeholder="Idade (anos)">'+
-        '<input id="htBfHeight" type="number" placeholder="Altura (cm)">'+
-        '<input id="htBfWeight" type="number" placeholder="Peso (kg)">'+
+        '<input id="htBfAge" type="text" inputmode="decimal" placeholder="Idade (anos)">'+
+        '<input id="htBfHeight" type="text" inputmode="decimal" placeholder="Altura (ex: 1.72 ou 172)">'+
+        '<input id="htBfWeight" type="text" inputmode="decimal" placeholder="Peso (kg)">'+
         '<select id="htBfGender" style="width:100%;padding:12px;background:#050c16;border:1px solid #30415d;color:#fff;border-radius:12px">'+
           '<option value="masculino">Masculino</option>'+
           '<option value="feminino">Feminino</option>'+
         '</select>'+
-        '<input id="htBfWaist" type="number" placeholder="Cintura (cm)">'+
-        '<input id="htBfNeck" type="number" placeholder="Pescoço (cm)">'+
-        '<input id="htBfHip" type="number" placeholder="Quadril (cm) — mulheres">'+
+        '<input id="htBfWaist" type="text" inputmode="decimal" placeholder="Cintura (cm)">'+
+        '<input id="htBfNeck" type="text" inputmode="decimal" placeholder="Pescoço (cm)">'+
+        '<input id="htBfHip" type="text" inputmode="decimal" placeholder="Quadril (cm) — mulheres">'+
       '</div>'+
       '<button type="button" class="htBtn" id="htBfCalcBtn" style="width:100%">Calcular BF</button>'+
       '<div id="htBfResult" style="display:none;margin-top:12px;padding:14px;border-radius:14px;background:#0a1a12;border:1px solid #20e08355;text-align:center"></div>';
@@ -25129,9 +25204,24 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
     }
 
     document.getElementById('htBfCalcBtn').onclick = function(ev){
-      if(ev){ ev.preventDefault(); ev.stopPropagation(); }
-      runBfCalc();
+      if(ev){ ev.preventDefault(); ev.stopPropagation(); if(ev.stopImmediatePropagation) ev.stopImmediatePropagation(); }
+      try{ runBfCalc(); }catch(err){ try{console.warn(err)}catch(e){} }
+      return false;
     };
+    // Impede Enter nos campos de enviar/navegar para outra tela
+    ['htBfAge','htBfHeight','htBfWeight','htBfWaist','htBfNeck','htBfHip'].forEach(function(id){
+      var el=document.getElementById(id);
+      if(!el || el._htBfKey) return;
+      el._htBfKey=true;
+      el.addEventListener('keydown', function(ev){
+        if(ev.key==='Enter' || ev.keyCode===13){
+          ev.preventDefault();
+          ev.stopPropagation();
+          try{ runBfCalc(); }catch(e){}
+          return false;
+        }
+      });
+    });
 
     /* pré-preenche com dados do perfil / medidas */
     syncBfFieldsFromState();
@@ -25160,12 +25250,31 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
 
   function num(id){
     var el=document.getElementById(id);
-    return el ? Number(el.value) : 0;
+    if(!el) return 0;
+    var raw = String(el.value || '').trim().replace(',', '.');
+    if(!raw) return 0;
+    var n = parseFloat(raw);
+    return isFinite(n) ? n : 0;
+  }
+
+  function heightCm(idPrimary, idFallback){
+    var h = num(idPrimary) || num(idFallback) || 0;
+    // Aceita 1.72 (metros) ou 172 (cm)
+    if(h > 0 && h < 3) h = h * 100;
+    return h;
   }
 
   function runBfCalc(){
+    // Nunca navegar para compartilhamento a partir da calculadora
+    try{
+      var celeb=document.getElementById('dayCelebrate');
+      if(celeb){ celeb.classList.remove('show'); celeb.style.display='none'; }
+      window.__htWeeklyShareActive=false;
+      window.__htBlockShareFromEvo=true;
+      setTimeout(function(){ window.__htBlockShareFromEvo=false; }, 2000);
+    }catch(e){}
     var age = num('htBfAge') || num('htEvoAge') || 30;
-    var height = num('htBfHeight') || num('htEvoHeight');
+    var height = heightCm('htBfHeight', 'htEvoHeight');
     var weight = num('htBfWeight') || num('htEvoWeight');
     var waist = num('htBfWaist') || num('htEvoWaist');
     var neck = num('htBfNeck') || num('htEvoNeck');
