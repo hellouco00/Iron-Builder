@@ -23709,7 +23709,8 @@ console.log("[HT] Catraca: onclick inline only (global capture disabled)");
       <button type="button" class="htBtn" id="htFrontCamBtn" style="margin:0">📷 Tirar foto</button>
       <button type="button" class="htBtn" id="htFrontGalBtn" style="margin:0;background:#0b1525;border:1px solid #315075">🖼️ Galeria</button>
     </div>
-    <small style="display:block;margin-top:6px;color:#8ea0b8;font-size:10px">Frente — corpo inteiro</small>
+    <button type="button" class="htBtn" id="htRedoFrontBtn" style="display:none;width:100%;margin-top:8px;padding:11px;border-radius:12px;background:#2a1218;border:1px solid #6c2944;color:#ff9dc8;font-weight:900" onclick="htRedoDraftPhoto('front')">🔁 Foto errada — tirar frente de novo</button>
+    <small style="display:block;margin-top:6px;color:#8ea0b8;font-size:10px">Frente — corpo inteiro · pode refazer antes de salvar</small>
 
     <div class="htPhotoGuideWrap" style="margin-top:14px">
       <img id="htSidePreview" src="" style="display:none">
@@ -23721,7 +23722,8 @@ console.log("[HT] Catraca: onclick inline only (global capture disabled)");
       <button type="button" class="htBtn" id="htSideCamBtn" style="margin:0">📷 Tirar foto</button>
       <button type="button" class="htBtn" id="htSideGalBtn" style="margin:0;background:#0b1525;border:1px solid #315075">🖼️ Galeria</button>
     </div>
-    <small style="display:block;margin-top:6px;color:#8ea0b8;font-size:10px">Lado — perfil, mesma distância</small>
+    <button type="button" class="htBtn" id="htRedoSideBtn" style="display:none;width:100%;margin-top:8px;padding:11px;border-radius:12px;background:#2a1218;border:1px solid #6c2944;color:#ff9dc8;font-weight:900" onclick="htRedoDraftPhoto('side')">🔁 Foto errada — tirar lado de novo</button>
+    <small style="display:block;margin-top:6px;color:#8ea0b8;font-size:10px">Lado — perfil · pode refazer antes de salvar</small>
 
     <button type="button" class="htBtn green" id="htSavePhotosBtn" style="display:none" onclick="try{window.htSavePhotoCycle()}catch(e){alert(e)}">✅ Salvar fotos deste ciclo</button>
   </div>
@@ -24270,6 +24272,9 @@ function htRenderPhotoScreen(){
     else { try{sp.removeAttribute('src');}catch(e){} sp.style.display='none'; }
   }
   if(sb) sb.style.display=(htTempPhotos.front&&htTempPhotos.side)?'block':'none';
+  var redoF=document.getElementById('htRedoFrontBtn'), redoS=document.getElementById('htRedoSideBtn');
+  if(redoF) redoF.style.display = htTempPhotos.front ? 'block' : 'none';
+  if(redoS) redoS.style.display = htTempPhotos.side ? 'block' : 'none';
   htRenderPhotoCompare();
 }
 var htTempPhotos={front:null,side:null};
@@ -24277,13 +24282,80 @@ function htHandlePhoto(which, input){
   var file=input.files && input.files[0]; if(!file) return;
   var reader=new FileReader();
   reader.onload=function(e){
+    if(typeof htTempPhotos==='undefined' || !htTempPhotos) htTempPhotos={front:null,side:null};
     htTempPhotos[which]=e.target.result;
+    try{ window.htTempPhotos = window.htTempPhotos || {front:null,side:null}; window.htTempPhotos[which]=e.target.result; }catch(err){}
+    try{
+      if(typeof htEnsureState==='function') htEnsureState();
+      if(typeof state!=='undefined' && state){
+        state.photos = state.photos || {};
+        state.photos.draft = state.photos.draft || {};
+        state.photos.draft[which]=e.target.result;
+        if(typeof save==='function') save();
+      }
+    }catch(err){}
     var img=document.getElementById(which==='front'?'htFrontPreview':'htSidePreview');
-    img.src=e.target.result; img.style.display='block';
-    if(htTempPhotos.front && htTempPhotos.side) document.getElementById('htSavePhotosBtn').style.display='block';
+    if(img){ img.src=e.target.result; img.style.display='block'; }
+    var sb=document.getElementById('htSavePhotosBtn');
+    if(sb && htTempPhotos.front && htTempPhotos.side) sb.style.display='block';
+    var redo=document.getElementById(which==='front'?'htRedoFrontBtn':'htRedoSideBtn');
+    if(redo) redo.style.display='block';
   };
   reader.readAsDataURL(file);
 }
+/** Aluno errou a foto: apaga só frente ou lado no rascunho e deixa tirar de novo (antes de salvar o ciclo). */
+function htRedoDraftPhoto(which){
+  which = (which==='side') ? 'side' : 'front';
+  try{
+    if(typeof htTempPhotos==='undefined' || !htTempPhotos) htTempPhotos={front:null,side:null};
+    htTempPhotos[which]=null;
+    try{ if(window.htTempPhotos) window.htTempPhotos[which]=null; }catch(e){}
+    try{
+      if(typeof htEnsureState==='function') htEnsureState();
+      if(typeof state!=='undefined' && state && state.photos){
+        state.photos.draft = state.photos.draft || {};
+        state.photos.draft[which]=null;
+        if(typeof save==='function') save();
+      }
+    }catch(e){}
+    var img=document.getElementById(which==='front'?'htFrontPreview':'htSidePreview');
+    if(img){ try{ img.removeAttribute('src'); }catch(e){} img.src=''; img.style.display='none'; }
+    var redo=document.getElementById(which==='front'?'htRedoFrontBtn':'htRedoSideBtn');
+    if(redo) redo.style.display='none';
+    var sb=document.getElementById('htSavePhotosBtn');
+    if(sb) sb.style.display=(htTempPhotos.front&&htTempPhotos.side)?'block':'none';
+    if(typeof toast==='function') toast(which==='front'?'Foto de frente removida — tire de novo':'Foto de lado removida — tire de novo');
+  }catch(e){ try{ alert(e); }catch(e2){} }
+}
+window.htRedoDraftPhoto = htRedoDraftPhoto;
+function htSyncPhotoRedoUI(){
+  try{
+    var front=null, side=null;
+    try{ if(typeof htTempPhotos!=='undefined'&&htTempPhotos){ front=htTempPhotos.front; side=htTempPhotos.side; } }catch(e){}
+    try{ if(window.htTempPhotos){ front=front||window.htTempPhotos.front; side=side||window.htTempPhotos.side; } }catch(e){}
+    try{
+      var fp=document.getElementById('htFrontPreview');
+      var sp=document.getElementById('htSidePreview');
+      if(!front && fp && fp.src && fp.src.indexOf('data:')===0) front=fp.src;
+      if(!side && sp && sp.src && sp.src.indexOf('data:')===0) side=sp.src;
+    }catch(e){}
+    var redoF=document.getElementById('htRedoFrontBtn');
+    var redoS=document.getElementById('htRedoSideBtn');
+    var sb=document.getElementById('htSavePhotosBtn');
+    if(redoF) redoF.style.display = front ? 'block' : 'none';
+    if(redoS) redoS.style.display = side ? 'block' : 'none';
+    if(sb) sb.style.display = (front && side) ? 'block' : 'none';
+  }catch(e){}
+}
+window.htSyncPhotoRedoUI = htSyncPhotoRedoUI;
+setInterval(function(){
+  try{
+    var pane=document.getElementById('htPaneFotos');
+    var evo=document.getElementById('evolution');
+    if((pane && pane.style.display!=='none') || (evo && evo.classList.contains('active'))) htSyncPhotoRedoUI();
+  }catch(e){}
+}, 1500);
+
 function htCompressPhotoDataUrl(dataUrl, maxSide, quality, cb){
   try{
     if(!dataUrl || String(dataUrl).indexOf('data:')!==0){ cb(dataUrl); return; }
@@ -24442,13 +24514,20 @@ function htSavePhotoCycle(){
 
 function htRenderPhotoCompare(){
   htEnsureState();
-  var hist=state.photos.history||[];
+  var hist=(state.photos && state.photos.history)||[];
   var textBox=document.getElementById('htPhotoCompareText');
   var grid=document.getElementById('htPhotoCompareGrid');
   if(!textBox || !grid) return;
   if(hist.length<1){
     textBox.innerHTML='Ainda não há fotos salvas. Escolha a frequência, tire as fotos de frente e de lado e salve o ciclo.';
     grid.innerHTML='';
+    try{
+      var savedBox=document.getElementById('htLastSavedPhotos');
+      if(savedBox && !(state.photos && state.photos.lastSaved)){
+        savedBox.style.display='none';
+        savedBox.innerHTML='';
+      }
+    }catch(e){}
     return;
   }
   var last=hist[hist.length-1];
@@ -24815,7 +24894,7 @@ window.htSetPlan=htSetPlan; window.htOpenNutritionGated=htOpenNutritionGated; wi
 window.htOpenRankingGated=htOpenRankingGated; window.htAnalyzeExams=htAnalyzeExams; window.htSwitchEvoTab=htSwitchEvoTab;
 window.htGoToNutritionFromEvo=htGoToNutritionFromEvo; window.htToggleAllergy=htToggleAllergy; window.htSetMealsCount=htSetMealsCount;
 window.htAutoAssembleAll=htAutoAssembleAll; window.htOpenSwap=htOpenSwap; window.htDoSwap=htDoSwap;
-window.htSetPhotoFrequency=htSetPhotoFrequency; window.htHandlePhoto=htHandlePhoto; window.htSavePhotoCycle=htSavePhotoCycle; window.htSavePhotoCycle = htSavePhotoCycle;
+window.htSetPhotoFrequency=htSetPhotoFrequency; window.htHandlePhoto=htHandlePhoto; window.htSavePhotoCycle=htSavePhotoCycle; window.htRedoDraftPhoto=htRedoDraftPhoto; window.htSavePhotoCycle = htSavePhotoCycle;
 window.htRenderPlans=htRenderPlans; window.htRenderPhotoScreen=htRenderPhotoScreen; window.htRenderRanking=htRenderRanking;
 window.htOpenWeeklyCelebrate=htOpenWeeklyCelebrate; window.htConfirmPostRanking=htConfirmPostRanking; window.htWeekModalAnswer=htWeekModalAnswer;
 
@@ -27046,41 +27125,68 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
     try{
       if(typeof htEnsureState === 'function') htEnsureState();
       if(typeof state !== 'undefined' && state){
-        // APAGA TODAS as fotos da evolução (histórico, lastSaved, draft, ciclo)
+        // APAGA TUDO: últimas salvas, histórico, rascunho, previews, comparativo
+        var freq = (state.photos && state.photos.frequency) || null;
         state.photos = {
-          frequency: (state.photos && state.photos.frequency) || null,
+          frequency: freq,
           cycleStart: null,
           nextAllowed: 0,
           history: [],
           lastSaved: null,
-          draft: {}
+          draft: { front:null, side:null }
         };
+        // remove qualquer chave extra antiga
+        try{
+          delete state.photos.last;
+          delete state.photos.current;
+          delete state.photos.entries;
+        }catch(e){}
         try{ window.htTempPhotos = { front: null, side: null }; }catch(e){}
         try{ if(typeof htTempPhotos !== 'undefined'){ htTempPhotos = { front:null, side:null }; } }catch(e){}
-        if(typeof save === 'function') save();
+        try{ if(typeof save === 'function') save(); }catch(e){}
+        // sincroniza nuvem do aluno/master se existir push de appState
+        try{
+          if(typeof htPushUserState === 'function') htPushUserState();
+          else if(typeof pushUserAppState === 'function') pushUserAppState();
+          else if(typeof htSyncUserToCloud === 'function') htSyncUserToCloud();
+        }catch(eCloud){}
       }
       try{
         var fp = document.getElementById('htFrontPreview');
         var sp = document.getElementById('htSidePreview');
-        if(fp){ fp.removeAttribute('src'); fp.style.display='none'; }
-        if(sp){ sp.removeAttribute('src'); sp.style.display='none'; }
+        if(fp){ fp.removeAttribute('src'); fp.src=''; fp.style.display='none'; }
+        if(sp){ sp.removeAttribute('src'); sp.src=''; sp.style.display='none'; }
         var sb = document.getElementById('htSavePhotosBtn');
         if(sb) sb.style.display = 'none';
+        var redoF = document.getElementById('htRedoFrontBtn');
+        var redoS = document.getElementById('htRedoSideBtn');
+        if(redoF) redoF.style.display = 'none';
+        if(redoS) redoS.style.display = 'none';
         var box = document.getElementById('htPhotoCaptureBox');
         if(box) box.style.display = 'block';
         var status = document.getElementById('htCycleStatus');
-        if(status) status.textContent = 'Master: todas as fotos apagadas. Ciclo liberado para testar de novo.';
-        // limpa comparativo na tela
+        if(status) status.textContent = 'Master: todas as fotos apagadas (últimas + histórico). Ciclo liberado.';
+        // quadro "Últimas fotos salvas"
+        var savedBox = document.getElementById('htLastSavedPhotos');
+        if(savedBox){ savedBox.style.display='none'; savedBox.innerHTML=''; }
+        var lastBox = document.getElementById('htLastPhotosBox');
+        if(lastBox){ lastBox.innerHTML=''; lastBox.style.display='none'; }
+        // comparativo / histórico embaixo
         var textBox = document.getElementById('htPhotoCompareText');
         var grid = document.getElementById('htPhotoCompareGrid');
-        if(textBox) textBox.innerHTML = 'Nenhuma foto salva. Tire as fotos de frente e de lado e salve o ciclo.';
+        if(textBox) textBox.innerHTML = 'Ainda não há fotos salvas. Escolha a frequência, tire as fotos de frente e de lado e salve o ciclo.';
         if(grid) grid.innerHTML = '';
-        var lastBox = document.getElementById('htLastPhotosBox');
-        if(lastBox) lastBox.innerHTML = '';
       }catch(e){}
       try{ if(typeof htRenderPhotoScreen === 'function') htRenderPhotoScreen(); }catch(e){}
       try{ if(typeof htRenderPhotoCompare === 'function') htRenderPhotoCompare(); }catch(e){}
-      toastMsg('Todas as fotos da evolução foram apagadas (Master)');
+      // segunda passada na UI (garante sumir quadro e histórico)
+      try{
+        var savedBox2 = document.getElementById('htLastSavedPhotos');
+        if(savedBox2){ savedBox2.style.display='none'; savedBox2.innerHTML=''; }
+        var grid2 = document.getElementById('htPhotoCompareGrid');
+        if(grid2) grid2.innerHTML = '';
+      }catch(e){}
+      toastMsg('Apagado: últimas fotos + histórico + rascunho');
     }catch(e){
       toastMsg('Erro ao resetar ciclo');
     }
@@ -27104,7 +27210,7 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
     var btn = document.createElement('button');
     btn.id = 'htMasterPhotoResetBtn';
     btn.type = 'button';
-    btn.textContent = '🛠️ Master: resetar ciclo de fotos (testar de novo)';
+    btn.textContent = '🛠️ Master: apagar TODAS as fotos (últimas + histórico)';
     btn.style.cssText = 'width:calc(100% - 20px);margin:8px 10px 12px;padding:12px;border-radius:12px;border:1px solid #ffbd3e;background:linear-gradient(135deg,#1a1408,#0d1a2e);color:#ffbd3e;font-weight:900;font-size:12px;';
     btn.onclick = function(ev){
       if(ev){ ev.preventDefault(); ev.stopPropagation(); }
