@@ -27046,12 +27046,16 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
     try{
       if(typeof htEnsureState === 'function') htEnsureState();
       if(typeof state !== 'undefined' && state){
-        state.photos = state.photos || {};
-        state.photos.nextAllowed = 0;
-        state.photos.draft = {};
-        if(typeof window.htTempPhotos !== 'undefined'){
-          window.htTempPhotos = { front: null, side: null };
-        }
+        // APAGA TODAS as fotos da evolução (histórico, lastSaved, draft, ciclo)
+        state.photos = {
+          frequency: (state.photos && state.photos.frequency) || null,
+          cycleStart: null,
+          nextAllowed: 0,
+          history: [],
+          lastSaved: null,
+          draft: {}
+        };
+        try{ window.htTempPhotos = { front: null, side: null }; }catch(e){}
         try{ if(typeof htTempPhotos !== 'undefined'){ htTempPhotos = { front:null, side:null }; } }catch(e){}
         if(typeof save === 'function') save();
       }
@@ -27065,10 +27069,18 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
         var box = document.getElementById('htPhotoCaptureBox');
         if(box) box.style.display = 'block';
         var status = document.getElementById('htCycleStatus');
-        if(status) status.textContent = 'Ciclo liberado (Master). Pode tirar novas fotos de teste.';
+        if(status) status.textContent = 'Master: todas as fotos apagadas. Ciclo liberado para testar de novo.';
+        // limpa comparativo na tela
+        var textBox = document.getElementById('htPhotoCompareText');
+        var grid = document.getElementById('htPhotoCompareGrid');
+        if(textBox) textBox.innerHTML = 'Nenhuma foto salva. Tire as fotos de frente e de lado e salve o ciclo.';
+        if(grid) grid.innerHTML = '';
+        var lastBox = document.getElementById('htLastPhotosBox');
+        if(lastBox) lastBox.innerHTML = '';
       }catch(e){}
       try{ if(typeof htRenderPhotoScreen === 'function') htRenderPhotoScreen(); }catch(e){}
-      toastMsg('Ciclo de fotos resetado — pode testar de novo');
+      try{ if(typeof htRenderPhotoCompare === 'function') htRenderPhotoCompare(); }catch(e){}
+      toastMsg('Todas as fotos da evolução foram apagadas (Master)');
     }catch(e){
       toastMsg('Erro ao resetar ciclo');
     }
@@ -27741,6 +27753,149 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(wire,100); });
   else setTimeout(wire,100);
   setInterval(wire, 2000);
+})();
+</script>
+
+
+<script id="htRankCompetitionFix">
+(function(){
+  'use strict';
+  /* Ranking competitivo: todos os alunos veem o Top 10 da nuvem (Firestore rankingWeeks).
+     Não altera treino/evolução/fotos além de ler lista pública. */
+
+  function toastMsg(m){ try{ if(typeof toast==='function') toast(m); }catch(e){} }
+
+  function loadCloudRanking(){
+    try{
+      if(typeof htV44LoadCloud === 'function'){
+        return htV44LoadCloud();
+      }
+      var fb = window.htFirebase && window.htFirebase.db;
+      if(!fb) return Promise.resolve([]);
+      return fb.collection('rankingWeeks').orderBy('score','desc').limit(10).get().then(function(snap){
+        var a=[]; snap.forEach(function(doc){ a.push(doc.data()||{}); });
+        return a;
+      }).catch(function(){ return []; });
+    }catch(e){ return Promise.resolve([]); }
+  }
+
+  function applyCloudToState(cloud){
+    try{
+      if(!cloud || !cloud.length) return;
+      if(typeof htEnsureState === 'function') htEnsureState();
+      if(typeof state === 'undefined' || !state) return;
+      state.ranking = state.ranking || {};
+      // merge: cloud vence por score; marca isMe pelo nome/email local
+      var meName = '', meEmail = '';
+      try{
+        var p = state.profile || {};
+        meName = String(p.name||'').toLowerCase();
+        meEmail = String(p.email||'').toLowerCase();
+      }catch(e){}
+      var list = cloud.map(function(x){
+        var o = Object.assign({}, x);
+        var id = String(o.id||'').toLowerCase();
+        var nm = String(o.name||'').toLowerCase();
+        o.isMe = !!(meEmail && id.indexOf(meEmail)>=0) || !!(meName && nm === meName);
+        return o;
+      }).sort(function(a,b){ return (Number(b.score)||0)-(Number(a.score)||0); });
+      state.ranking.list = list;
+      try{ if(typeof save === 'function') save(); }catch(e){}
+    }catch(e){}
+  }
+
+  function renderTop10FromState(){
+    try{
+      if(typeof htRenderRanking === 'function') htRenderRanking();
+    }catch(e){}
+  }
+
+  function refreshRankingFromCloud(showToast){
+    return loadCloudRanking().then(function(cloud){
+      if(cloud && cloud.length){
+        applyCloudToState(cloud);
+        renderTop10FromState();
+        if(showToast) toastMsg('Ranking atualizado ('+cloud.length+' atletas)');
+      } else {
+        renderTop10FromState();
+      }
+    }).catch(function(){ renderTop10FromState(); });
+  }
+
+  // Ao abrir a tela de ranking, busca nuvem
+  if(typeof window.show === 'function' && !window.show.__htRankCloud){
+    var prevShow = window.show;
+    window.show = function(id){
+      var r = prevShow.apply(this, arguments);
+      if(id === 'rankingScreen'){
+        setTimeout(function(){ refreshRankingFromCloud(false); }, 80);
+      }
+      return r;
+    };
+    window.show.__htRankCloud = true;
+  }
+
+  // Botão de atualizar (injeta uma vez na rankingScreen)
+  function injectRefreshBtn(){
+    try{
+      var sec = document.getElementById('rankingScreen');
+      if(!sec || document.getElementById('htRankRefreshBtn')) return;
+      var box = document.getElementById('htRankTop10');
+      if(!box || !box.parentNode) return;
+      var btn = document.createElement('button');
+      btn.id = 'htRankRefreshBtn';
+      btn.type = 'button';
+      btn.className = 'htBtn';
+      btn.style.cssText = 'width:100%;margin:8px 0 4px;padding:12px;border-radius:12px;background:#0b1525;border:1px solid #315075;font-weight:900;font-size:12px';
+      btn.textContent = '🔄 Atualizar ranking (todos os alunos)';
+      btn.onclick = function(ev){
+        if(ev){ try{ ev.preventDefault(); }catch(e){} }
+        btn.disabled = true; btn.textContent = 'Atualizando…';
+        refreshRankingFromCloud(true).then(function(){
+          btn.disabled = false; btn.textContent = '🔄 Atualizar ranking (todos os alunos)';
+        });
+      };
+      box.parentNode.insertBefore(btn, box);
+    }catch(e){}
+  }
+
+  // Nota da tela: competição entre alunos
+  function fixRankingNote(){
+    try{
+      var note = document.querySelector('#rankingScreen .note');
+      if(note && !note.__htCompNote){
+        note.__htCompNote = true;
+        note.textContent = 'Ranking competitivo entre alunos: complete 5 dias × 4 exercícios, poste sua foto da semana e dispute o Top 10. A lista é compartilhada na nuvem para todos.';
+      }
+      var h = document.querySelector('#rankingScreen .htEvoSection h3');
+      if(h && (h.textContent||'').indexOf('suas melhores')>=0){
+        h.textContent = 'Top 10 — competição entre alunos';
+      }
+    }catch(e){}
+  }
+
+  // Garante publicação na nuvem quando postar (se a função V44 existir, ela já publica;
+  // reforça load depois do post)
+  if(typeof window.htConfirmPostRanking === 'function' && !window.htConfirmPostRanking.__htCloudRefresh){
+    var prevPost = window.htConfirmPostRanking;
+    window.htConfirmPostRanking = function(){
+      var ret = prevPost.apply(this, arguments);
+      setTimeout(function(){ refreshRankingFromCloud(false); }, 600);
+      setTimeout(function(){ refreshRankingFromCloud(false); }, 2000);
+      return ret;
+    };
+    window.htConfirmPostRanking.__htCloudRefresh = true;
+  }
+
+  function boot(){
+    injectRefreshBtn();
+    fixRankingNote();
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot,200); });
+  else setTimeout(boot,200);
+  setInterval(function(){ injectRefreshBtn(); fixRankingNote(); }, 3000);
+
+  try{ console.log('[HT] Ranking competitivo + Master apaga todas as fotos'); }catch(e){}
 })();
 </script>
 
