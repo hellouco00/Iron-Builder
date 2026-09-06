@@ -25971,12 +25971,34 @@ function htInjectPostRankButton(){
   if(!btn){
     btn=document.createElement('button');
     btn.id='htPostRankBtn';
-    btn.style.cssText='width:100%;padding:14px;border-radius:13px;background:linear-gradient(135deg,#ffbd3e,#c98f14);color:#231400;font-weight:950;margin-top:8px';
-    btn.textContent='✅ Postar no Ranking';
-    btn.onclick=htConfirmPostRanking;
+    btn.type='button';
     area.appendChild(btn);
   }
-  btn.style.display = window.__htWeeklyShareActive ? 'block' : 'none';
+  btn.style.cssText='width:100%;padding:14px;border-radius:13px;background:linear-gradient(135deg,#ffbd3e,#c98f14);color:#231400;font-weight:950;margin-top:8px;display:block;pointer-events:auto;position:relative;z-index:50;border:0;cursor:pointer';
+  try{
+    var already=false;
+    if(typeof htV44State==='function'){
+      var s0=htV44State(); var wk0=(typeof htV44WeekKey==='function'?htV44WeekKey():null);
+      if(s0&&s0.ranking&&s0.ranking.list&&wk0){
+        already=s0.ranking.list.some(function(x){ return x && (x.isMe||false) && String(x.week||'')===String(wk0); });
+      }
+      if(!already && s0 && s0.ranking && s0.ranking.postedWeek && wk0 && String(s0.ranking.postedWeek)===String(wk0)) already=true;
+    }
+    btn.textContent = already ? '📷 Trocar foto / atualizar posição' : '✅ Postar no Ranking';
+  }catch(e){ btn.textContent='✅ Postar no Ranking'; }
+  btn.onclick=function(ev){
+    try{ if(ev){ ev.preventDefault(); ev.stopPropagation(); } }catch(e){}
+    try{
+      if(typeof window.htDoPostRanking==='function') window.htDoPostRanking();
+      else if(typeof window.htConfirmPostRanking==='function') window.htConfirmPostRanking();
+      else if(typeof htConfirmPostRanking==='function') htConfirmPostRanking();
+      else alert('Função de postar ranking não encontrada');
+    }catch(err){
+      try{ alert('Erro ao postar: '+(err&&err.message?err.message:err)); }catch(e2){}
+    }
+    return false;
+  };
+  btn.style.display = 'block';
 }
 function htConfirmPostRanking(){
   htEnsureState();
@@ -26391,28 +26413,305 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
     }catch(e){return Promise.resolve([])}
   }
 
-  window.htConfirmPostRanking=function(){
-    var s=htV44State();if(!s||!htWeekIsComplete()){if(typeof toast==='function')toast('Complete os 5 dias com 4 exercícios por dia.');return;}
-    var finish=function(photo){
-      var entry=htV44BuildRankEntry(photo);
-      if(!entry)return;
-      s.ranking=s.ranking||{};s.ranking.list=(s.ranking.list||[]).filter(function(x){return x.id!==entry.id;});s.ranking.list.push(entry);
-      htV44Save();
-      htV44PublishCloud(entry).then(function(){return htV44LoadCloud();}).then(function(cloud){
-        if(cloud.length){s.ranking.list=cloud;htV44Save();}
-        htRenderRanking();
-      });
-      try{document.getElementById('dayCelebrate').classList.remove('show')}catch(e){}
-      window.__htWeeklyShareActive=false;
-      htRenderRanking();if(typeof show==='function')show('rankingScreen');
-      if(typeof toast==='function')toast('Você entrou no ranking! 🏆');
-    };
-    if(typeof sharePhotoDataUrl!=='undefined' && sharePhotoDataUrl){
-      htV44CompressDataUrl(window.sharePhotoDataUrl,700,.72,finish);
-    }else{
-      if(typeof toast==='function')toast('Escolha uma foto ou tire uma foto para entrar no ranking.');
+  function htRankUserKey(){
+    try{
+      var s = (typeof htV44State==='function' && htV44State()) || (typeof state!=='undefined'?state:null);
+      var p = (s && s.profile) || {};
+      var em = String(p.email||'').toLowerCase().trim();
+      if(em) return em;
+      if(p.name) return 'name:'+String(p.name).toLowerCase().trim();
+    }catch(e){}
+    try{
+      if(typeof currentUser==='function'){
+        var u=currentUser();
+        if(u&&u.email) return String(u.email).toLowerCase().trim();
+      }
+    }catch(e){}
+    try{
+      var sess=typeof getSession==='function'?getSession():null;
+      if(sess&&sess.email) return String(sess.email).toLowerCase().trim();
+    }catch(e){}
+    return 'local';
+  }
+
+  function htRankWeekKey(){
+    try{ if(typeof htV44WeekKey==='function') return String(htV44WeekKey()); }catch(e){}
+    try{ if(typeof htGetWeekKey==='function') return String(htGetWeekKey()); }catch(e){}
+    var d=new Date();
+    var onejan=new Date(d.getFullYear(),0,1);
+    var week=Math.ceil((((d-onejan)/86400000)+onejan.getDay()+1)/7);
+    return d.getFullYear()+'-W'+week;
+  }
+
+  function htRankStableId(userKey, week){
+    return ('rank_' + String(userKey||'local') + '_' + String(week||'w')).replace(/[^a-zA-Z0-9_-]/g,'_').slice(0,120);
+  }
+
+  /** Remove TODAS as entradas da mesma pessoa na mesma semana (evita post duplicado) */
+  function htRankDedupeList(list, userKey, week, keepEntry){
+    list = Array.isArray(list) ? list.slice() : [];
+    userKey = String(userKey||'').toLowerCase();
+    week = String(week||'');
+    var keepId = keepEntry ? String(keepEntry.id||'') : '';
+    var out = [];
+    list.forEach(function(x){
+      if(!x) return;
+      var id = String(x.id||'').toLowerCase();
+      var nm = String(x.name||'').toLowerCase();
+      var xw = String(x.week||'');
+      var sameWeek = !week || !xw || xw===week || id.indexOf(week.toLowerCase())>=0;
+      var sameUser = false;
+      if(x.isMe) sameUser = true;
+      if(userKey && id.indexOf(userKey)>=0) sameUser = true;
+      if(userKey.indexOf('name:')===0 && nm===userKey.slice(5)) sameUser = true;
+      if(keepId && String(x.id||'')===keepId){ /* será recolocado */ return; }
+      if(sameUser && sameWeek) return; // descarta duplicata da semana
+      out.push(x);
+    });
+    if(keepEntry) out.push(keepEntry);
+    // dedupe geral por id
+    var seen = {};
+    out = out.filter(function(x){
+      var id=String(x.id||'');
+      if(!id) return true;
+      if(seen[id]) return false;
+      seen[id]=1;
+      return true;
+    });
+    return out;
+  }
+
+  function htV44FindMyWeekEntry(list, week, email, name){
+    list = list || [];
+    var uk = String(email||'').toLowerCase() || (name ? 'name:'+String(name).toLowerCase() : htRankUserKey());
+    week = String(week||htRankWeekKey());
+    for(var i=0;i<list.length;i++){
+      var x=list[i]; if(!x) continue;
+      var id=String(x.id||'').toLowerCase();
+      var sameWeek = !week || String(x.week||'')===week || id.indexOf(week.toLowerCase())>=0;
+      var sameUser = !!x.isMe;
+      if(uk && id.indexOf(uk.replace('name:',''))>=0) sameUser = true;
+      if(name && String(x.name||'').toLowerCase()===String(name).toLowerCase()) sameUser = true;
+      if(sameUser && sameWeek) return x;
+    }
+    return null;
+  }
+
+  function htRankNotify(msg){
+    try{ if(typeof toast==='function') toast(msg); }catch(e){}
+    try{
+      var box=document.getElementById('htRankActionMsg');
+      if(!box){
+        box=document.createElement('div');
+        box.id='htRankActionMsg';
+        box.style.cssText='margin:10px;padding:12px;border-radius:12px;background:#0d2418;border:1px solid #20e08355;color:#7dffab;font-size:12px;font-weight:800;display:none;position:relative;z-index:100;';
+        var host=document.getElementById('htRankTop10')||document.getElementById('rankingScreen');
+        if(host){ if(host.id==='htRankTop10' && host.parentNode) host.parentNode.insertBefore(box, host); else host.insertBefore(box, host.firstChild); }
+      }
+      if(box){
+        box.textContent=msg;
+        box.style.display='block';
+        setTimeout(function(){ try{ box.style.display='none'; }catch(e){} }, 5000);
+      }
+    }catch(e){}
+    // feedback no próprio botão
+    try{
+      var btn=document.getElementById('htPostRankBtn');
+      if(btn){
+        var old=btn.textContent;
+        btn.textContent='✅ '+msg.replace(/[🏆📷📈]/g,'').trim().slice(0,42);
+        btn.style.background='linear-gradient(135deg,#20e083,#0f9f55)';
+        btn.style.color='#03130b';
+        setTimeout(function(){
+          try{
+            btn.style.background='linear-gradient(135deg,#ffbd3e,#c98f14)';
+            btn.style.color='#231400';
+            btn.textContent='📷 Trocar foto / atualizar posição';
+          }catch(e){}
+        }, 2200);
+      }
+    }catch(e){}
+    try{ console.log('[HT Rank]', msg); }catch(e){}
+  }
+
+  function htGetRankPhoto(){
+    try{ if(typeof sharePhotoDataUrl!=='undefined' && sharePhotoDataUrl) return sharePhotoDataUrl; }catch(e){}
+    try{ if(window.sharePhotoDataUrl) return window.sharePhotoDataUrl; }catch(e){}
+    try{
+      var img=document.getElementById('sharePhotoPreview');
+      if(img && img.src && img.src.indexOf('data:')===0) return img.src;
+    }catch(e){}
+    try{
+      var raw=localStorage.getItem('htShareCamPhotoV1');
+      if(raw){ var o=JSON.parse(raw); if(o&&o.dataUrl) return o.dataUrl; }
+    }catch(e){}
+    return null;
+  }
+
+  window.htDoPostRanking = function(){
+    // evita clique duplo
+    if(window.__htRankPosting) return;
+    window.__htRankPosting = true;
+    setTimeout(function(){ window.__htRankPosting=false; }, 2500);
+
+    try{
+      var btn=document.getElementById('htPostRankBtn');
+      if(btn){
+        btn.style.background='linear-gradient(135deg,#56b5ff,#168cff)';
+        btn.style.color='#fff';
+        btn.textContent='⏳ Publicando...';
+      }
+    }catch(e){}
+
+    try{
+      var s = null;
+      try{ s = (typeof htV44State==='function') ? htV44State() : null; }catch(e){}
+      try{ if(!s && typeof htEnsureState==='function'){ htEnsureState(); } }catch(e){}
+      try{ if(!s && typeof state!=='undefined') s = state; }catch(e){}
+
+      var photoNow = htGetRankPhoto();
+      if(!photoNow){
+        window.__htRankPosting=false;
+        htRankNotify('Adicione ou tire uma foto antes de postar no ranking.');
+        return;
+      }
+
+      var weekOk = false;
+      try{ if(typeof htWeekIsComplete==='function') weekOk = !!htWeekIsComplete(); }catch(e){}
+      if(!weekOk && !window.__htWeeklyShareActive && !window.__htShareAllowed){
+        window.__htRankPosting=false;
+        htRankNotify('Complete a semana de treinos para postar no ranking.');
+        return;
+      }
+
+      var finish = function(photo){
+        try{
+          var userKey = htRankUserKey();
+          var week = htRankWeekKey();
+          var stableId = htRankStableId(userKey, week);
+
+          var entry = null;
+          try{ if(typeof htV44BuildRankEntry==='function') entry = htV44BuildRankEntry(photo); }catch(e){}
+          if(!entry){
+            var totals = {exercises:0,load:0,sets:0,score:0,week:week};
+            try{ if(typeof htV44WeeklyMetrics==='function') totals = htV44WeeklyMetrics()||totals; }catch(e){}
+            try{ if((!totals || !totals.load) && typeof htWeeklyTotals==='function'){ var t=htWeeklyTotals(); totals.exercises=t.exercises; totals.load=t.load; totals.score=Math.round((t.load||0)+(t.exercises||0)*5); } }catch(e){}
+            var badge = {emoji:'🏅', name:'No ranking'};
+            try{ if(typeof htCurrentBadge==='function') badge = htCurrentBadge()||badge; }catch(e){}
+            var p = (s && s.profile) || {};
+            entry = {
+              name: p.name || 'Atleta',
+              photo: photo,
+              date: Date.now(),
+              badgeEmoji: badge.emoji,
+              badgeName: badge.name,
+              exercises: totals.exercises||0,
+              sets: totals.sets||0,
+              load: totals.load||0,
+              score: totals.score||Math.round((totals.load||0)+(totals.exercises||0)*5),
+              week: week
+            };
+          }
+
+          // força identidade estável (1 por pessoa/semana)
+          entry.id = stableId;
+          entry.userKey = userKey;
+          entry.week = week;
+          entry.isMe = true;
+          entry.public = true;
+          entry.photo = photo || entry.photo || null;
+          entry.date = Date.now();
+
+          if(!s) s = (typeof state!=='undefined'?state:{});
+          s.ranking = s.ranking || {};
+          s.ranking.list = s.ranking.list || [];
+
+          var prev = htV44FindMyWeekEntry(s.ranking.list, week, userKey, (s.profile&&s.profile.name)||'');
+          // também procura pelo id estável
+          if(!prev){
+            for(var i=0;i<s.ranking.list.length;i++){
+              if(s.ranking.list[i] && String(s.ranking.list[i].id)===stableId){ prev=s.ranking.list[i]; break; }
+            }
+          }
+
+          var mode = 'new';
+          if(prev){
+            var oldScore=Number(prev.score)||0, newScore=Number(entry.score)||0;
+            var oldLoad=Number(prev.load)||0, newLoad=Number(entry.load)||0;
+            if(newScore < oldScore && newLoad <= oldLoad){
+              // só foto
+              entry.score = oldScore;
+              entry.load = Math.max(oldLoad, newLoad);
+              entry.exercises = Math.max(Number(prev.exercises)||0, Number(entry.exercises)||0);
+              entry.sets = Math.max(Number(prev.sets)||0, Number(entry.sets)||0);
+              entry.badgeEmoji = prev.badgeEmoji || entry.badgeEmoji;
+              entry.badgeName = prev.badgeName || entry.badgeName;
+              mode = 'photo';
+            } else {
+              mode = 'rank'; // pontuação/posição sobe
+            }
+          }
+
+          // SEMPRE dedupe: remove todas as minhas entradas da semana e coloca só 1
+          s.ranking.list = htRankDedupeList(s.ranking.list, userKey, week, entry);
+          s.ranking.postedWeek = week;
+          s.ranking.postedAt = Date.now();
+          try{ if(typeof htV44Save==='function') htV44Save(); }catch(e){}
+          try{ if(typeof save==='function') save(); }catch(e){}
+
+          try{
+            if(typeof htV44PublishCloud==='function'){
+              // publica com id estável (sobrescreve o doc da semana)
+              htV44PublishCloud(entry).then(function(){
+                try{ if(typeof htV44LoadCloud==='function') return htV44LoadCloud(); }catch(e){}
+              }).then(function(cloud){
+                if(cloud && cloud.length){
+                  // mescla cloud + minha entrada única
+                  var merged = htRankDedupeList(cloud, userKey, week, entry);
+                  // dedupe também por userKey+week de outros (mantém melhor score)
+                  var best = {};
+                  merged.forEach(function(x){
+                    if(!x) return;
+                    var k = String(x.userKey||x.id||x.name||'') + '|' + String(x.week||'');
+                    var prevB = best[k];
+                    if(!prevB || (Number(x.score)||0) >= (Number(prevB.score)||0)) best[k]=x;
+                  });
+                  s.ranking.list = Object.keys(best).map(function(k){ return best[k]; });
+                  // garante a minha
+                  s.ranking.list = htRankDedupeList(s.ranking.list, userKey, week, entry);
+                  try{ if(typeof htV44Save==='function') htV44Save(); }catch(e){}
+                }
+                try{ if(typeof htRenderRanking==='function') htRenderRanking(); }catch(e){}
+              });
+            }
+          }catch(e){}
+
+          try{ var day=document.getElementById('dayCelebrate'); if(day){ day.classList.remove('show'); day.style.display='none'; } }catch(e){}
+          window.__htWeeklyShareActive=false;
+          try{ if(typeof show==='function') show('rankingScreen'); }catch(e){}
+          try{ if(typeof htRenderRanking==='function') htRenderRanking(); }catch(e){}
+
+          if(mode==='new') htRankNotify('🏆 Você entrou no ranking desta semana! (1 post)');
+          else if(mode==='photo') htRankNotify('📷 Foto atualizada — continua 1 post nesta semana');
+          else htRankNotify('📈 Posição atualizada — post único da semana');
+        }catch(err){
+          console.warn(err);
+          window.__htRankPosting=false;
+          htRankNotify('Erro ao postar no ranking. Tente de novo.');
+        }
+      };
+
+      try{
+        if(typeof htV44CompressDataUrl==='function') htV44CompressDataUrl(photoNow,700,.72,finish);
+        else finish(photoNow);
+      }catch(e){ finish(photoNow); }
+    }catch(err){
+      window.__htRankPosting=false;
+      try{ alert('Erro: '+(err&&err.message?err.message:err)); }catch(e){}
     }
   };
+
+  window.htConfirmPostRanking = function(){ return window.htDoPostRanking(); };
 
   /* Modal final: primeiro oferece escolher/tirar foto, depois publica. */
   window.htWeekModalAnswer=function(join){
@@ -29568,6 +29867,17 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
     try{
       if(typeof state!=='undefined' && state && state.ranking && state.ranking.list) list=state.ranking.list;
     }catch(e){}
+    // dedupe visual: 1 entrada por pessoa/semana
+    try{
+      var best={};
+      (list||[]).forEach(function(x){
+        if(!x) return;
+        var k=String(x.userKey||x.id||x.name||'x')+'|'+String(x.week||'');
+        var p=best[k];
+        if(!p || (Number(x.score)||0)>=(Number(p.score)||0)) best[k]=x;
+      });
+      list=Object.keys(best).map(function(k){return best[k];});
+    }catch(e){}
     var sorted=sortByScoreThenLoad(list);
     var rules='<div class="htRankRules" style="margin-bottom:10px">'+
       '<b>Top 10 público</b> — posição por <b>pontuação</b> (carga registrada no treino + desafio concluído + semanas).<br/>'+
@@ -29604,13 +29914,9 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
     if(typeof window.htConfirmPostRanking!=='function' || window.htConfirmPostRanking.__htV48) return;
     var prev=window.htConfirmPostRanking;
     window.htConfirmPostRanking=function(){
-      markChallengeProgress();
-      var ch=activeChallenge();
-      if(ch && !challengeCompleted()){
-        toastMsg('Conclua o desafio da semana no Treino (com carga registrada) para entrar no ranking.');
-        try{ show('workout'); }catch(e){}
-        return;
-      }
+      try{ markChallengeProgress(); }catch(e){}
+      // não bloqueia o post aqui — o fluxo htDoPostRanking decide
+
       // injeta score baseado em carga antes do publish
       try{
         var m=weeklyLoadMetrics();
@@ -29944,6 +30250,45 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(bind,200); });
   else setTimeout(bind,200);
   setInterval(bind, 2000);
+})();
+</script>
+
+
+<script id="htPostRankFixV51">
+(function(){
+  function bindBtn(){
+    try{
+      if(typeof htInjectPostRankButton==='function') htInjectPostRankButton();
+    }catch(e){}
+    var btn=document.getElementById('htPostRankBtn');
+    if(!btn) return;
+    btn.style.pointerEvents='auto';
+    btn.style.zIndex='50';
+    btn.style.display='block';
+    if(btn.__htV51) return;
+    btn.__htV51=true;
+    btn.addEventListener('click', function(ev){
+      try{ ev.preventDefault(); ev.stopPropagation(); }catch(e){}
+      try{
+        if(typeof window.htDoPostRanking==='function') window.htDoPostRanking();
+        else if(typeof window.htConfirmPostRanking==='function') window.htConfirmPostRanking();
+        else alert('Post ranking indisponível');
+      }catch(err){ alert('Erro: '+(err&&err.message?err.message:err)); }
+      return false;
+    }, true);
+  }
+  // também reexporta confirm -> doPost
+  function wire(){
+    try{
+      if(typeof window.htDoPostRanking==='function'){
+        window.htConfirmPostRanking = function(){ return window.htDoPostRanking(); };
+      }
+    }catch(e){}
+    bindBtn();
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(wire,300); });
+  else setTimeout(wire,300);
+  setInterval(wire, 1500);
 })();
 </script>
 
