@@ -1091,16 +1091,18 @@ body:has(#authWelcome.active) #bottom {
 
 <section class="screen" id="paywall">
 <div class="authWrap">
-  <div class="authHero"><div class="logo">⭐</div><h1>Assinatura</h1><p id="paywallMsg">Seu período de teste terminou. Assine para continuar.</p></div>
-  <div class="payCard">
-    <div class="period">Helton Training</div>
-    <div class="price">R$ 10</div>
-    <div class="period">por mês • 30 dias de acesso</div>
+  <div class="authHero"><div class="logo">⭐</div><h1>Assinatura</h1><p id="paywallMsg">Seu período de teste terminou. Escolha o plano e assine para continuar.</p></div>
+  <div id="payPlanPicker" style="display:grid;gap:10px;margin:8px 0 4px"></div>
+  <div class="payCard" id="paySelectedCard">
+    <div class="period" id="paySelectedName">Helton Training · Básico</div>
+    <div class="price" id="paySelectedPrice">R$ 10</div>
+    <div class="period" id="paySelectedPeriod">por mês • 30 dias de acesso</div>
   </div>
+  <div id="payPlanExtras" style="margin:8px 0 4px"></div>
   <div class="authCard">
-    <p class="hint">1) Toque no botão e pague com Pix/cartão na InfinitePay.<br/>2) Após a confirmação, o acesso é liberado automaticamente para o e-mail cadastrado.</p>
-    <button class="authBtn green" onclick="openPaymentLink()">Pagar R$ 10 com Pix</button>
-    <button class="authBtn ghost" type="button" onclick="htRequestPayment()">✅ Já paguei — avisar o Helton</button>
+    <p class="hint">1) Escolha o plano acima.<br/>2) Pague pelo link, chave Pix ou QR Code configurados pelo Master.<br/>3) Depois toque em “Já paguei” ou use o código de liberação.</p>
+    <button class="authBtn green" id="payMainBtn" onclick="openPaymentLink()">Pagar R$ 10 com Pix</button>
+    <button class="authBtn ghost" type="button" onclick="try{window.htRequestPayment()}catch(e){alert(e)}">✅ Já paguei — avisar o Helton</button>
     <div class="authOk" id="paymentRequestOk"></div>
     <label style="margin-top:16px">Código de liberação</label>
     <input id="unlockCode" placeholder="Ex: HT-XXXXXXXX" autocomplete="off"/>
@@ -1206,19 +1208,92 @@ body:has(#authWelcome.active) #bottom {
   </div>
   
   <div class="authCard" id="adminPaySection">
-    <h2>💳 Link e valor do pagamento</h2>
-    <p class="hint">Crie o link na InfinitePay e cole aqui. O valor e o botão da tela de assinatura atualizam para todos neste aparelho (e no app quando você publicar esta configuração).</p>
-    <label>Valor exibido (ex: R$ 19,90)</label>
-    <input id="admPayPrice" placeholder="R$ 19,90"/>
-    <label>Texto do período</label>
-    <input id="admPayPeriod" placeholder="por mês • 30 dias de acesso"/>
-    <label>Link InfinitePay (Pix)</label>
-    <input id="admPayLink" placeholder="https://link.infinitepay.io/..."/>
-    <label>Texto do botão (opcional)</label>
-    <input id="admPayBtn" placeholder="Pagar R$ 19,90 com Pix"/>
-    <button class="authBtn green" type="button" onclick="adminSavePayConfig()" style="margin-top:12px">Salvar pagamento</button>
-    <button class="authBtn ghost" type="button" onclick="adminTestPayLink()" style="margin-top:8px">Testar link</button>
-    <p class="hint" style="margin-top:10px">Depois de salvar, abra a tela de Assinatura para conferir. Alunos neste navegador já veem o valor novo.</p>
+    <h2>💳 Pagamentos por plano</h2>
+    <p class="hint">Cada plano é independente. Preencha valor, link, chave Pix e/ou QR Code. Salve o plano desejado. O aluno vê na assinatura o que você configurou para o plano escolhido. <b>Meus planos</b> continua igual (só mostra o valor).</p>
+
+    <div style="margin:14px 0;padding:14px;border-radius:16px;border:2px solid #168cff;background:linear-gradient(180deg,#071525,#050c16)">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">
+        <b style="color:#56b5ff;font-size:16px">🟢 PLANO BÁSICO</b>
+        <span style="font-size:10px;color:#8ea0b8">ID: basico</span>
+      </div>
+      <label>Valor exibido</label>
+      <input id="admPayPrice_basico" placeholder="R$ 10,00"/>
+      <label>Período</label>
+      <input id="admPayPeriod_basico" placeholder="por mês • 30 dias de acesso"/>
+      <label>Link de pagamento (InfinitePay / outro)</label>
+      <input id="admPayLink_basico" placeholder="https://link.infinitepay.io/..."/>
+      <label>Chave Pix (opcional)</label>
+      <input id="admPayPix_basico" placeholder="CPF, e-mail, telefone ou chave aleatória"/>
+      <label>QR Code Pix (imagem, opcional)</label>
+      <input type="file" id="admPayQr_basico" accept="image/png,image/jpeg,image/webp"/>
+      <div id="admPayQrPrevWrap_basico" style="display:none;margin:8px 0;text-align:center">
+        <img id="admPayQrPrev_basico" alt="QR Básico" style="max-width:180px;width:100%;border-radius:12px;border:1px solid #315075;background:#fff;padding:8px"/>
+        <button type="button" class="authBtn ghost" style="margin-top:6px" onclick="adminClearPlanQr('basico')">Remover QR</button>
+      </div>
+      <label>Texto do botão (opcional)</label>
+      <input id="admPayBtn_basico" placeholder="Pagar Básico com Pix"/>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
+        <button class="authBtn green" type="button" onclick="adminSaveOnePlan('basico')">💾 Salvar Básico</button>
+        <button class="authBtn ghost" type="button" onclick="adminTestPayLinkPlan('basico')">Testar link</button>
+      </div>
+    </div>
+
+    <div style="margin:14px 0;padding:14px;border-radius:16px;border:2px solid #ffbd3e;background:linear-gradient(180deg,#1a1408,#050c16)">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">
+        <b style="color:#ffbd3e;font-size:16px">🟡 PLANO INTERMEDIÁRIO</b>
+        <span style="font-size:10px;color:#8ea0b8">ID: intermediario</span>
+      </div>
+      <label>Valor exibido</label>
+      <input id="admPayPrice_intermediario" placeholder="R$ 20,00"/>
+      <label>Período</label>
+      <input id="admPayPeriod_intermediario" placeholder="por mês • 30 dias de acesso"/>
+      <label>Link de pagamento (InfinitePay / outro)</label>
+      <input id="admPayLink_intermediario" placeholder="https://link.infinitepay.io/..."/>
+      <label>Chave Pix (opcional)</label>
+      <input id="admPayPix_intermediario" placeholder="CPF, e-mail, telefone ou chave aleatória"/>
+      <label>QR Code Pix (imagem, opcional)</label>
+      <input type="file" id="admPayQr_intermediario" accept="image/png,image/jpeg,image/webp"/>
+      <div id="admPayQrPrevWrap_intermediario" style="display:none;margin:8px 0;text-align:center">
+        <img id="admPayQrPrev_intermediario" alt="QR Intermediário" style="max-width:180px;width:100%;border-radius:12px;border:1px solid #315075;background:#fff;padding:8px"/>
+        <button type="button" class="authBtn ghost" style="margin-top:6px" onclick="adminClearPlanQr('intermediario')">Remover QR</button>
+      </div>
+      <label>Texto do botão (opcional)</label>
+      <input id="admPayBtn_intermediario" placeholder="Pagar Intermediário com Pix"/>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
+        <button class="authBtn green" type="button" onclick="adminSaveOnePlan('intermediario')">💾 Salvar Intermediário</button>
+        <button class="authBtn ghost" type="button" onclick="adminTestPayLinkPlan('intermediario')">Testar link</button>
+      </div>
+    </div>
+
+    <div style="margin:14px 0;padding:14px;border-radius:16px;border:2px solid #f04fb8;background:linear-gradient(180deg,#1a0c18,#050c16)">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">
+        <b style="color:#f04fb8;font-size:16px">🟣 PLANO VIP</b>
+        <span style="font-size:10px;color:#8ea0b8">ID: vip</span>
+      </div>
+      <label>Valor exibido</label>
+      <input id="admPayPrice_vip" placeholder="R$ 30,00"/>
+      <label>Período</label>
+      <input id="admPayPeriod_vip" placeholder="por mês • 30 dias de acesso"/>
+      <label>Link de pagamento (InfinitePay / outro)</label>
+      <input id="admPayLink_vip" placeholder="https://link.infinitepay.io/..."/>
+      <label>Chave Pix (opcional)</label>
+      <input id="admPayPix_vip" placeholder="CPF, e-mail, telefone ou chave aleatória"/>
+      <label>QR Code Pix (imagem, opcional)</label>
+      <input type="file" id="admPayQr_vip" accept="image/png,image/jpeg,image/webp"/>
+      <div id="admPayQrPrevWrap_vip" style="display:none;margin:8px 0;text-align:center">
+        <img id="admPayQrPrev_vip" alt="QR VIP" style="max-width:180px;width:100%;border-radius:12px;border:1px solid #315075;background:#fff;padding:8px"/>
+        <button type="button" class="authBtn ghost" style="margin-top:6px" onclick="adminClearPlanQr('vip')">Remover QR</button>
+      </div>
+      <label>Texto do botão (opcional)</label>
+      <input id="admPayBtn_vip" placeholder="Pagar VIP com Pix"/>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
+        <button class="authBtn green" type="button" onclick="adminSaveOnePlan('vip')">💾 Salvar VIP</button>
+        <button class="authBtn ghost" type="button" onclick="adminTestPayLinkPlan('vip')">Testar link</button>
+      </div>
+    </div>
+
+    <button class="authBtn" type="button" onclick="adminSavePayConfig()" style="margin-top:8px">💾 Salvar os 3 planos de uma vez</button>
+    <p class="hint" style="margin-top:10px">Dica: use “Salvar Básico / Intermediário / VIP” para gravar só um plano. O aluno vê link, Pix e QR do plano que ele escolher.</p>
   </div>
 <div class="adminPanel" id="adminPanelEditor" style="display:none">
 <div class="adminEditorShell" id="adminEditorShell">
@@ -2367,6 +2442,37 @@ const PAY_LINK_DEFAULT = "https://link.infinitepay.io/assistencia-kingcell/VC1BL
 const TRIAL_DAYS = 10;
 const PERIOD_DAYS = 30;
 const PAY_CONFIG_KEY = "heltonPayConfigV1";
+const PAY_PLAN_IDS = ['basico','intermediario','vip'];
+const PAY_PLAN_NAMES = {basico:'Básico', intermediario:'Intermediário', vip:'VIP'};
+const PAY_PLAN_DEFAULTS = {
+  basico: { priceLabel:'R$ 10', periodLabel:'por mês • 30 dias de acesso', link: PAY_LINK_DEFAULT, buttonText:null, pixKey:'', qrDataUrl:'' },
+  intermediario: { priceLabel:'R$ 20', periodLabel:'por mês • 30 dias de acesso', link: PAY_LINK_DEFAULT, buttonText:null, pixKey:'', qrDataUrl:'' },
+  vip: { priceLabel:'R$ 30', periodLabel:'por mês • 30 dias de acesso', link: PAY_LINK_DEFAULT, buttonText:null, pixKey:'', qrDataUrl:'' }
+};
+
+function htNormalizePlanId(id){
+  id = String(id||'basico').toLowerCase().trim();
+  if(id === 'intermediário' || id === 'intermediario') return 'intermediario';
+  if(id === 'premium' || id === 'pro') return 'vip';
+  if(PAY_PLAN_IDS.indexOf(id) >= 0) return id;
+  return 'basico';
+}
+
+function htDefaultPayConfig(){
+  return {
+    plans: {
+      basico: Object.assign({}, PAY_PLAN_DEFAULTS.basico),
+      intermediario: Object.assign({}, PAY_PLAN_DEFAULTS.intermediario),
+      vip: Object.assign({}, PAY_PLAN_DEFAULTS.vip)
+    },
+    priceLabel: PAY_PLAN_DEFAULTS.basico.priceLabel,
+    priceShort: '10',
+    periodLabel: PAY_PLAN_DEFAULTS.basico.periodLabel,
+    link: PAY_LINK_DEFAULT,
+    buttonText: null,
+    defaultPlan: 'basico'
+  };
+}
 
 function getPayConfig(){
   try{
@@ -2374,44 +2480,198 @@ function getPayConfig(){
     if(raw){
       var c = JSON.parse(raw);
       if(c && typeof c === 'object'){
-        return {
-          priceLabel: c.priceLabel || 'R$ 10',
-          priceShort: c.priceShort || '10',
-          periodLabel: c.periodLabel || 'por mês • 30 dias de acesso',
-          link: c.link || PAY_LINK_DEFAULT,
-          buttonText: c.buttonText || null
-        };
+        var base = htDefaultPayConfig();
+        if(!c.plans){
+          var legacy = {
+            priceLabel: c.priceLabel || base.priceLabel,
+            periodLabel: c.periodLabel || base.periodLabel,
+            link: c.link || PAY_LINK_DEFAULT,
+            buttonText: c.buttonText || null
+          };
+          base.plans.basico = Object.assign({}, legacy);
+          base.plans.intermediario = Object.assign({}, legacy, { priceLabel: 'R$ 20' });
+          base.plans.vip = Object.assign({}, legacy, { priceLabel: 'R$ 30' });
+        } else {
+          PAY_PLAN_IDS.forEach(function(id){
+            var p = c.plans[id] || {};
+            var d = PAY_PLAN_DEFAULTS[id];
+            base.plans[id] = {
+              priceLabel: p.priceLabel || d.priceLabel,
+              periodLabel: p.periodLabel || d.periodLabel,
+              link: (p.link != null) ? p.link : (d.link || ''),
+              buttonText: p.buttonText || null,
+              pixKey: p.pixKey || '',
+              qrDataUrl: p.qrDataUrl || ''
+            };
+          });
+        }
+        var mirrorId = htNormalizePlanId(c.defaultPlan || 'basico');
+        var m = base.plans[mirrorId] || base.plans.basico;
+        base.priceLabel = m.priceLabel;
+        base.priceShort = String(m.priceLabel||'').replace(/R\$\s*/i,'').trim();
+        base.periodLabel = m.periodLabel;
+        base.link = m.link;
+        base.buttonText = m.buttonText;
+        base.defaultPlan = mirrorId;
+        return base;
       }
     }
   }catch(e){}
+  return htDefaultPayConfig();
+}
+
+function savePayConfig(cfg){
+  try{ localStorage.setItem(PAY_CONFIG_KEY, JSON.stringify(cfg)); }catch(e){}
+}
+
+function getPlanPayConfig(planId){
+  var cfg = getPayConfig();
+  planId = htNormalizePlanId(planId || (typeof htDesiredPlan==='function' ? htDesiredPlan() : 'basico'));
+  var p = (cfg.plans && cfg.plans[planId]) || PAY_PLAN_DEFAULTS[planId] || PAY_PLAN_DEFAULTS.basico;
   return {
-    priceLabel: 'R$ 10',
-    priceShort: '10',
-    periodLabel: 'por mês • 30 dias de acesso',
-    link: PAY_LINK_DEFAULT,
-    buttonText: null
+    id: planId,
+    name: PAY_PLAN_NAMES[planId] || planId,
+    priceLabel: p.priceLabel || 'R$ 10',
+    periodLabel: p.periodLabel || 'por mês • 30 dias de acesso',
+    link: (p.link != null && String(p.link).trim() !== '') ? String(p.link).trim() : '',
+    buttonText: p.buttonText || ('Pagar ' + (PAY_PLAN_NAMES[planId]||planId) + ' ' + (p.priceLabel||'') + ' com Pix'),
+    pixKey: p.pixKey || '',
+    qrDataUrl: p.qrDataUrl || ''
   };
 }
-function savePayConfig(cfg){
-  localStorage.setItem(PAY_CONFIG_KEY, JSON.stringify(cfg));
-}
-// compat: PAY_LINK always reflects current config
+
 var PAY_LINK = getPayConfig().link;
-function refreshPayLink(){ PAY_LINK = getPayConfig().link; }
+function refreshPayLink(){
+  try{
+    var plan = (typeof htDesiredPlan==='function') ? htDesiredPlan() : 'basico';
+    PAY_LINK = getPlanPayConfig(plan).link;
+  }catch(e){
+    PAY_LINK = getPayConfig().link;
+  }
+}
+
+function htGetDesiredPlanId(){
+  try{
+    var ls = localStorage.getItem('htDesiredPlanV1');
+    if(ls) return htNormalizePlanId(ls);
+  }catch(e){}
+  try{
+    if(typeof state!=='undefined' && state && state.plan){
+      return htNormalizePlanId(state.plan.desired || state.plan.tier || 'basico');
+    }
+  }catch(e){}
+  try{
+    if(typeof currentUser==='function'){
+      var u=currentUser();
+      if(u && (u.desiredPlan || u.plan)) return htNormalizePlanId(u.desiredPlan || u.plan);
+    }
+  }catch(e){}
+  return 'basico';
+}
+
+function htSelectPayPlan(planId){
+  planId = htNormalizePlanId(planId || 'basico');
+  try{ localStorage.setItem('htDesiredPlanV1', planId); }catch(e){}
+  try{
+    if(typeof state!=='undefined' && state){
+      state.plan = state.plan || {};
+      state.plan.desired = planId;
+      state.plan.tier = planId;
+      try{ if(typeof save==='function') save(); }catch(e){}
+    }
+  }catch(e){}
+  try{
+    if(typeof currentUser==='function' && typeof authLoad==='function' && typeof authSave==='function'){
+      var u = currentUser();
+      if(u && u.email){
+        var db = authLoad();
+        if(db && db.users && db.users[u.email]){
+          db.users[u.email].plan = planId;
+          db.users[u.email].desiredPlan = planId;
+          authSave(db);
+        }
+      }
+    }
+  }catch(e){}
+  try{ if(typeof htSetPlan==='function') htSetPlan(planId); }catch(e){}
+  applyPayConfigToUI();
+  try{ if(typeof htRenderPlans==='function') htRenderPlans(); }catch(e){}
+  try{ if(typeof toast==='function') toast('Plano selecionado: ' + (PAY_PLAN_NAMES[planId]||planId)); }catch(e){}
+}
+window.htSelectPayPlan = htSelectPayPlan;
+window.htGetDesiredPlanId = htGetDesiredPlanId;
 
 function applyPayConfigToUI(){
-  var cfg = getPayConfig();
-  refreshPayLink();
-  var priceEl = document.querySelector('#paywall .price');
-  if(priceEl) priceEl.textContent = cfg.priceLabel;
-  var periods = document.querySelectorAll('#paywall .period');
-  if(periods && periods.length > 1) periods[1].textContent = cfg.periodLabel;
-  var btn = document.querySelector('#paywall .authBtn.green');
-  if(btn && btn.getAttribute('onclick') && btn.getAttribute('onclick').indexOf('openPaymentLink') >= 0){
-    btn.textContent = cfg.buttonText || ('Pagar ' + cfg.priceLabel + ' com Pix');
+  var planId = 'basico';
+  try{ planId = htGetDesiredPlanId(); }catch(e){}
+  try{ planId = htNormalizePlanId(planId); }catch(e){}
+  var pcfg = getPlanPayConfig(planId);
+  try{ refreshPayLink(); }catch(e){}
+
+  var picker = document.getElementById('payPlanPicker');
+  if(picker){
+    picker.innerHTML = PAY_PLAN_IDS.map(function(id){
+      var pc = getPlanPayConfig(id);
+      var active = id === planId;
+      var border = active ? '#20e083' : '#315075';
+      var bg = active ? 'linear-gradient(145deg,#0a241a,#081321)' : '#081321';
+      var glow = active ? 'box-shadow:0 0 0 1px #20e08355,0 8px 22px #20e08322;' : '';
+      return '<button type="button" data-plan="'+id+'" class="htPayPlanBtn'+(active?' on':'')+'" onclick="window.htSelectPayPlan && window.htSelectPayPlan(\''+id+'\')" style="text-align:left;padding:12px 14px;border-radius:14px;border:2px solid '+border+';background:'+bg+';color:#fff;cursor:pointer;'+glow+'">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px">'+
+          '<b style="font-size:15px;color:'+(active?'#20e083':'#fff')+'">'+(active?'✓ ':'')+pc.name+'</b>'+
+          '<span style="color:#ffbd3e;font-weight:950;font-size:16px">'+pc.priceLabel+'</span>'+
+        '</div>'+
+        '<div style="font-size:11px;color:#8ea0b8;margin-top:4px">'+pc.periodLabel+'</div>'+
+      '</button>';
+    }).join('');
   }
-  // sub banner texts that mention price — updated on next updateSubBanner call
+
+  var nameEl = document.getElementById('paySelectedName');
+  if(nameEl) nameEl.textContent = 'Helton Training · ' + pcfg.name;
+  var priceEl = document.getElementById('paySelectedPrice') || document.querySelector('#paywall .price');
+  if(priceEl) priceEl.textContent = pcfg.priceLabel;
+  var periodEl = document.getElementById('paySelectedPeriod');
+  if(periodEl) periodEl.textContent = pcfg.periodLabel;
+  var btn = document.getElementById('payMainBtn') || document.querySelector('#paywall .authBtn.green');
+  if(btn){
+    if(pcfg.link){
+      btn.style.display = '';
+      btn.textContent = pcfg.buttonText || ('Pagar ' + pcfg.priceLabel + ' com Pix');
+    } else {
+      btn.style.display = (pcfg.pixKey || pcfg.qrDataUrl) ? 'none' : '';
+      btn.textContent = pcfg.buttonText || ('Pagar ' + pcfg.priceLabel + ' com Pix');
+    }
+  }
+  var extras = document.getElementById('payPlanExtras');
+  if(extras){
+    var html = '';
+    if(pcfg.qrDataUrl){
+      html += '<div style="margin:0 0 10px;padding:14px;border-radius:16px;background:#081321;border:1px solid #315075;text-align:center">'+
+        '<div style="font-size:12px;font-weight:900;color:#56b5ff;margin-bottom:8px">QR Code Pix — '+pcfg.name+'</div>'+
+        '<img src="'+pcfg.qrDataUrl+'" alt="QR Pix" style="max-width:220px;width:100%;border-radius:12px;background:#fff;padding:10px"/>'+
+      '</div>';
+    }
+    if(pcfg.pixKey){
+      html += '<div style="margin:0 0 10px;padding:14px;border-radius:16px;background:#081321;border:1px solid #315075">'+
+        '<div style="font-size:12px;font-weight:900;color:#ffbd3e;margin-bottom:6px">Chave Pix — '+pcfg.name+'</div>'+
+        '<div id="payPixKeyText" style="font-size:13px;font-weight:800;word-break:break-all;color:#fff;margin-bottom:10px"></div>'+
+        '<button type="button" class="authBtn ghost" style="width:100%" onclick="htCopyPixKey()">📋 Copiar chave Pix</button>'+
+      '</div>';
+    }
+    if(!pcfg.link && !pcfg.pixKey && !pcfg.qrDataUrl){
+      html += '<div style="padding:12px;border-radius:12px;background:#1a1408;border:1px solid #6d5010;font-size:12px;color:#c5d3e3">O Master ainda não configurou link, Pix ou QR deste plano.</div>';
+    }
+    extras.innerHTML = html;
+    if(pcfg.pixKey){
+      var t = document.getElementById('payPixKeyText');
+      if(t) t.textContent = pcfg.pixKey;
+      window.__htCurrentPixKey = pcfg.pixKey;
+    } else {
+      window.__htCurrentPixKey = '';
+    }
+  }
 }
+
 
 const AUTH_KEY = "heltonAuthV1";
 const ADMIN_KEY = "heltonAdminV1";
@@ -2765,11 +3025,26 @@ function routeAfterAuth(){
 }
 
 function openPaymentLink(){
-  var cfg = getPayConfig();
-  var link = (cfg && cfg.link) || PAY_LINK || PAY_LINK_DEFAULT;
-  if(!link){ toast('Link de pagamento não configurado'); return; }
-  window.open(link, '_blank', 'noopener');
-  toast('Abrindo pagamento InfinitePay…');
+  var planId = 'basico';
+  try{ if(typeof htDesiredPlan==='function') planId = htNormalizePlanId(htDesiredPlan()); }catch(e){}
+  var cfg = getPlanPayConfig(planId);
+  var link = (cfg && cfg.link) || '';
+  try{
+    if(typeof currentUser==='function'){
+      var u = currentUser();
+      if(u){ u.desiredPlan = planId; u.plan = planId; }
+    }
+  }catch(e){}
+  if(link){
+    try{ window.open(link, '_blank', 'noopener'); }catch(e){ location.href = link; }
+    toast('Abrindo pagamento '+(cfg.name||'')+' ('+cfg.priceLabel+')…');
+    return;
+  }
+  if(cfg.pixKey || cfg.qrDataUrl){
+    toast('Use o QR Code ou a chave Pix do plano '+(cfg.name||''));
+    return;
+  }
+  toast('Pagamento do plano '+(cfg.name||planId)+' ainda não configurado pelo Master');
 }
 
 function dayStamp(ts){ return Math.floor(ts/86400000); }
@@ -2832,7 +3107,25 @@ function applyUnlockCode(){
   setTimeout(()=>routeAfterAuth(),800);
 }
 
-function tryEnterApp(){ routeAfterAuth(); }
+function tryEnterApp(){
+  try{
+    if(typeof currentUser==='function' && typeof getAccessStatus==='function'){
+      var u=currentUser();
+      if(u){
+        var st=getAccessStatus(u);
+        if(st && !st.ok){
+          var msg=document.getElementById('paywallMsg');
+          if(msg) msg.textContent=st.msg||'Seu acesso ainda não está liberado. Aguarde o Master ou use o código.';
+          if(typeof applyPayConfigToUI==='function') applyPayConfigToUI();
+          show('paywall');
+          if(typeof toast==='function') toast('Acesso ainda não liberado.');
+          return;
+        }
+      }
+    }
+  }catch(e){}
+  routeAfterAuth();
+}
 
 function updateSubBanner(){
   const el = document.getElementById('subBanner');
@@ -3140,7 +3433,7 @@ function show(id){
  }
  const bottom=document.getElementById("bottom");
  const noNav=["authWelcome","authRegister","paywall","authAdminLogin","admin","trainGoal"];
- const protectedScreens=["home","workout","detail","cardio","nutrition","profile"];
+ const protectedScreens=["home","workout","detail","cardio","nutrition","profile","evolution","rankingScreen","htPlans","trainGoal"];
  if(protectedScreens.includes(id)){
    if(isAdminSession()){
      ensureAdminAppProfile();
@@ -6456,42 +6749,187 @@ function previewAdminFrame(){
 <script>
 /* ===== PAYMENT CONFIG ADMIN ===== */
 function adminSavePayConfig(){
-  var price = ((document.getElementById('admPayPrice')||{}).value||'').trim() || 'R$ 10';
+  // salva os 3 de uma vez
+  ['basico','intermediario','vip'].forEach(function(id){ adminSaveOnePlan(id, true); });
+  try{ if(typeof htRenderPlans==='function') htRenderPlans(); }catch(e){}
+  applyPayConfigToUI();
+  toast('3 planos salvos');
+}
+
+function adminReadPlanFromForm(id, fallbackPrice){
+  var price = ((document.getElementById('admPayPrice_'+id)||{}).value||'').trim() || fallbackPrice;
   if(price && price.indexOf('R$') < 0) price = 'R$ ' + price;
-  var period = ((document.getElementById('admPayPeriod')||{}).value||'').trim() || 'por mês • 30 dias de acesso';
-  var link = ((document.getElementById('admPayLink')||{}).value||'').trim();
-  var btn = ((document.getElementById('admPayBtn')||{}).value||'').trim();
-  if(!link){ toast('Cole o link da InfinitePay'); return; }
-  if(link.indexOf('http') !== 0){ toast('Link inválido — use o link completo https://...'); return; }
-  var short = price.replace(/R\$\s*/i,'').trim();
-  var cfg = {
+  var period = ((document.getElementById('admPayPeriod_'+id)||{}).value||'').trim() || 'por mês • 30 dias de acesso';
+  var link = ((document.getElementById('admPayLink_'+id)||{}).value||'').trim();
+  var btn = ((document.getElementById('admPayBtn_'+id)||{}).value||'').trim();
+  var pix = ((document.getElementById('admPayPix_'+id)||{}).value||'').trim();
+  var qr = '';
+  try{
+    var prev = document.getElementById('admPayQrPrev_'+id);
+    if(prev && prev.getAttribute('src')) qr = prev.getAttribute('src');
+  }catch(e){}
+  // preserve existing qr if form empty
+  if(!qr){
+    try{
+      var existing = getPlanPayConfig(id);
+      if(existing && existing.qrDataUrl) qr = existing.qrDataUrl;
+    }catch(e){}
+  }
+  return {
     priceLabel: price,
-    priceShort: short,
     periodLabel: period,
-    link: link,
-    buttonText: btn || ('Pagar ' + price + ' com Pix')
+    link: link || '',
+    buttonText: btn || null,
+    pixKey: pix || '',
+    qrDataUrl: qr || ''
   };
+}
+
+function adminSaveOnePlan(planId, silent){
+  planId = htNormalizePlanId(planId||'basico');
+  var fallbacks = {basico:'R$ 10', intermediario:'R$ 20', vip:'R$ 30'};
+  var planData = adminReadPlanFromForm(planId, fallbacks[planId]||'R$ 10');
+  if(planData.link && planData.link.indexOf('http') !== 0){
+    toast('Link inválido no plano '+(PAY_PLAN_NAMES[planId]||planId)+' — use https://...');
+    return;
+  }
+  if(!planData.link && !planData.pixKey && !planData.qrDataUrl){
+    // permite salvar só valor, mas avisa
+    if(!silent) toast('Salvo com valor. Opcional: coloque link, Pix ou QR para o aluno pagar.');
+  }
+  var cfg = getPayConfig();
+  cfg.plans = cfg.plans || {};
+  cfg.plans[planId] = planData;
+  // espelho legado = básico
+  var m = cfg.plans.basico || planData;
+  cfg.priceLabel = m.priceLabel;
+  cfg.priceShort = String(m.priceLabel||'').replace(/R\$\s*/i,'').trim();
+  cfg.periodLabel = m.periodLabel;
+  cfg.link = m.link || PAY_LINK_DEFAULT;
+  cfg.buttonText = m.buttonText;
+  cfg.defaultPlan = 'basico';
   savePayConfig(cfg);
   refreshPayLink();
   applyPayConfigToUI();
+  try{ if(typeof htRenderPlans==='function') htRenderPlans(); }catch(e){}
   if(typeof updateSubBanner === 'function') updateSubBanner();
-  if(typeof window.htPushBranding==='function') window.htPushBranding();
-  toast('Pagamento atualizado para todos: ' + price);
+  try{
+    if(window.htFirebase && window.htFirebase.db){
+      window.htFirebase.db.collection('appConfig').doc('pay').set({plans:cfg.plans, updatedAt:Date.now()}, {merge:true}).catch(function(){});
+    }
+  }catch(e){}
+  if(!silent) toast((PAY_PLAN_NAMES[planId]||planId)+' salvo: '+planData.priceLabel);
 }
 
-function adminTestPayLink(){
-  var link = ((document.getElementById('admPayLink')||{}).value||'').trim() || getPayConfig().link;
-  if(!link){ toast('Nenhum link configurado'); return; }
+function adminTestPayLinkPlan(planId){
+  planId = htNormalizePlanId(planId||'basico');
+  var link = ((document.getElementById('admPayLink_'+planId)||{}).value||'').trim();
+  if(!link) link = getPlanPayConfig(planId).link;
+  if(!link){ toast('Nenhum link configurado para '+(PAY_PLAN_NAMES[planId]||planId)); return; }
   window.open(link, '_blank', 'noopener');
+}
+
+function adminTestPayLink(){ adminTestPayLinkPlan('basico'); }
+
+function adminClearPlanQr(planId){
+  planId = htNormalizePlanId(planId||'basico');
+  var prev = document.getElementById('admPayQrPrev_'+planId);
+  var wrap = document.getElementById('admPayQrPrevWrap_'+planId);
+  var file = document.getElementById('admPayQr_'+planId);
+  if(prev){ prev.removeAttribute('src'); prev.src = ''; }
+  if(wrap) wrap.style.display = 'none';
+  if(file) try{ file.value = ''; }catch(e){}
+  try{
+    var cfg = getPayConfig();
+    if(cfg.plans && cfg.plans[planId]){ cfg.plans[planId].qrDataUrl = ''; savePayConfig(cfg); }
+  }catch(e){}
+  toast('QR removido do plano '+(PAY_PLAN_NAMES[planId]||planId));
+}
+
+function adminCompressQrFile(file, cb){
+  try{
+    var r = new FileReader();
+    r.onload = function(){
+      var img = new Image();
+      img.onload = function(){
+        try{
+          var maxSide = 480;
+          var w = img.naturalWidth || img.width || 1;
+          var h = img.naturalHeight || img.height || 1;
+          var sc = Math.min(1, maxSide / Math.max(w,h));
+          var c = document.createElement('canvas');
+          c.width = Math.max(1, Math.round(w*sc));
+          c.height = Math.max(1, Math.round(h*sc));
+          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          cb(c.toDataURL('image/jpeg', 0.85));
+        }catch(e){ cb(r.result); }
+      };
+      img.onerror = function(){ cb(r.result); };
+      img.src = r.result;
+    };
+    r.onerror = function(){ toast('Falha ao ler a imagem do QR'); };
+    r.readAsDataURL(file);
+  }catch(e){ toast('Não foi possível carregar o QR'); }
+}
+
+function adminBindPlanQrInputs(){
+  ['basico','intermediario','vip'].forEach(function(id){
+    var inp = document.getElementById('admPayQr_'+id);
+    if(!inp || inp._htQrBound) return;
+    inp._htQrBound = true;
+    inp.addEventListener('change', function(){
+      var f = inp.files && inp.files[0];
+      if(!f) return;
+      adminCompressQrFile(f, function(dataUrl){
+        var prev = document.getElementById('admPayQrPrev_'+id);
+        var wrap = document.getElementById('admPayQrPrevWrap_'+id);
+        if(prev){ prev.src = dataUrl; }
+        if(wrap) wrap.style.display = 'block';
+        toast('QR do plano '+(PAY_PLAN_NAMES[id]||id)+' carregado — clique em Salvar');
+      });
+    });
+  });
 }
 
 function loadAdminPayFields(){
   var cfg = getPayConfig();
   var set = function(id,v){ var el=document.getElementById(id); if(el) el.value = v || ''; };
-  set('admPayPrice', cfg.priceLabel);
-  set('admPayPeriod', cfg.periodLabel);
-  set('admPayLink', cfg.link);
-  set('admPayBtn', cfg.buttonText || ('Pagar ' + cfg.priceLabel + ' com Pix'));
+  ['basico','intermediario','vip'].forEach(function(id){
+    var p = (cfg.plans && cfg.plans[id]) || PAY_PLAN_DEFAULTS[id] || {};
+    set('admPayPrice_'+id, p.priceLabel || '');
+    set('admPayPeriod_'+id, p.periodLabel || 'por mês • 30 dias de acesso');
+    set('admPayLink_'+id, p.link || '');
+    set('admPayBtn_'+id, p.buttonText || '');
+    set('admPayPix_'+id, p.pixKey || '');
+    var prev = document.getElementById('admPayQrPrev_'+id);
+    var wrap = document.getElementById('admPayQrPrevWrap_'+id);
+    if(p.qrDataUrl && prev){
+      prev.src = p.qrDataUrl;
+      if(wrap) wrap.style.display = 'block';
+    } else {
+      if(prev){ prev.removeAttribute('src'); prev.src=''; }
+      if(wrap) wrap.style.display = 'none';
+    }
+  });
+  adminBindPlanQrInputs();
+}
+
+function htCopyPixKey(){
+  var key = window.__htCurrentPixKey || '';
+  if(!key){
+    try{
+      var t = document.getElementById('payPixKeyText');
+      if(t) key = t.textContent || '';
+    }catch(e){}
+  }
+  if(!key){ toast('Nenhuma chave Pix neste plano'); return; }
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(key).then(function(){ toast('Chave Pix copiada'); }).catch(function(){ prompt('Copie a chave Pix:', key); });
+    } else {
+      prompt('Copie a chave Pix:', key);
+    }
+  }catch(e){ prompt('Copie a chave Pix:', key); }
 }
 
 // Hook show paywall + admin
@@ -6503,6 +6941,7 @@ function loadAdminPayFields(){
       show = function(id){
         orig(id);
         if(id === 'paywall') setTimeout(applyPayConfigToUI, 30);
+        if(id === 'htPlans') setTimeout(function(){ try{ if(typeof htRenderPlans==='function') htRenderPlans(); }catch(e){} }, 30);
         if(id === 'admin') setTimeout(loadAdminPayFields, 40);
       };
       show._htPayCfg = true;
@@ -7590,13 +8029,24 @@ function adminShowPanel(panelId){
       if(typeof updateBrandLivePreview === 'function') updateBrandLivePreview();
     }, 80);
   } else if(panelId === 'adminPanelPay'){
+    if(typeof adminEnterEditorMode === 'function') adminEnterEditorMode(false);
     if(stats) stats.style.display = 'none';
     accounts.forEach(function(c){ c.style.display = 'none'; });
     var ed3 = document.getElementById('adminPanelEditor');
     if(ed3){ ed3.classList.remove('active'); ed3.style.display = 'none'; }
-    if(pay) pay.style.display = '';
+    if(pay){
+      pay.style.display = 'block';
+      pay.style.visibility = 'visible';
+      pay.style.opacity = '1';
+    }
     if(frames) frames.style.display = 'none';
     if(typeof loadAdminPayFields === 'function') loadAdminPayFields();
+    setTimeout(function(){
+      try{
+        var sec = document.getElementById('adminPaySection');
+        if(sec) sec.scrollIntoView({behavior:'smooth', block:'start'});
+      }catch(e){}
+    }, 80);
   } else if(panelId === 'adminPanelFrames'){
     if(stats) stats.style.display = 'none';
     accounts.forEach(function(c){ c.style.display = 'none'; });
@@ -10033,42 +10483,162 @@ function composeApply(target){
 
   /* ===== ALUNO: AVISAR PAGAMENTO ===== */
   window.htRequestPayment=function(){
-    var e=email(), db=fb();
-    if(!e){ show('authWelcome'); return; }
-    if(!db){ toast('Firebase não está conectado. Verifique a internet.'); return; }
-    var ok=document.getElementById('paymentRequestOk');
-    var plan='basico', planName='Básico', uname='';
     try{
-      if(typeof htDesiredPlan==='function') plan=htDesiredPlan();
-      else if(typeof state!=='undefined' && state && state.plan) plan=state.plan.desired||state.plan.tier||'basico';
-      planName=({basico:'Básico',intermediario:'Intermediário',vip:'VIP'})[plan]||plan;
-      var u=(typeof currentUser==='function')?currentUser():null;
-      uname=(u && u.profile && u.profile.name) || (u && u.name) || '';
-    }catch(x){}
-    db.collection('paymentRequests').doc(key(e)).set({
-      email:e,
-      name:uname,
-      plan:plan,
-      planName:planName,
-      status:'pending',
-      requestedAt:now(),
-      updatedAt:now()
-    },{merge:true}).then(function(){
-      // também grava no usuário
+      function showMsg(msg, ok){
+        try{ if(typeof toast==='function') toast(msg); }catch(e){}
+        try{
+          var ids=['paymentRequestOk','paymentRequestOkPlans'];
+          for(var i=0;i<ids.length;i++){
+            var el=document.getElementById(ids[i]);
+            if(el){
+              el.textContent=msg;
+              el.classList.add('show');
+              el.style.display='block';
+            }
+          }
+          // se não existe na tela de planos, cria
+          if(!document.getElementById('paymentRequestOkPlans')){
+            var host=document.getElementById('htPlanPayHint')||document.getElementById('htPlansGrid')||document.getElementById('paywall');
+            if(host){
+              var n=document.createElement('div');
+              n.id='paymentRequestOkPlans';
+              n.className='authOk show';
+              n.style.cssText='display:block;margin:10px;padding:12px;border-radius:12px;background:#0d2418;border:1px solid #20e08355;color:#7dffab;font-size:12px';
+              n.textContent=msg;
+              if(host.parentNode) host.parentNode.insertBefore(n, host.nextSibling);
+            }
+          }
+        }catch(e2){}
+        try{ if(!ok) console.warn('[HT Já paguei]', msg); }catch(e3){}
+      }
+
+      var e='';
       try{
-        db.collection('users').doc(key(e)).set({
-          email:e, paymentPending:true, requestedPlan:plan, lastPaymentRequestAt:now(), updatedAt:now()
-        },{merge:true});
+        var s=(typeof getSession==='function')?getSession():null;
+        if(s&&s.email) e=String(s.email).toLowerCase().trim();
+      }catch(e0){}
+      if(!e){
+        try{
+          var cu=(typeof currentUser==='function')?currentUser():null;
+          if(cu&&cu.email) e=String(cu.email).toLowerCase().trim();
+        }catch(e1){}
+      }
+      if(!e){
+        try{
+          if(typeof state!=='undefined'&&state&&state.profile&&state.profile.email)
+            e=String(state.profile.email).toLowerCase().trim();
+        }catch(e2){}
+      }
+      if(!e){
+        showMsg('Não encontrei seu login. Entre na conta de novo e toque em Já paguei.', false);
+        try{ if(typeof show==='function') show('authWelcome'); }catch(e3){}
+        return;
+      }
+
+      var plan='basico', planName='Básico', uname='', academyId='', academyName='';
+      try{
+        if(typeof htGetDesiredPlanId==='function') plan=htGetDesiredPlanId();
+        else if(typeof htDesiredPlan==='function') plan=htDesiredPlan();
+        plan=(typeof htNormalizePlanId==='function')?htNormalizePlanId(plan):plan;
+        planName=({basico:'Básico',intermediario:'Intermediário',vip:'VIP'})[plan]||plan;
+        var u=(typeof currentUser==='function')?currentUser():null;
+        uname=(u&&u.profile&&u.profile.name)||(u&&u.name)||'';
+        academyId=(u&&(u.academyId||u.academiaId||u.gymId))||'';
       }catch(x){}
-      if(ok){ok.textContent='Pagamento informado ('+planName+'). O Master/Admin verá no painel e liberará após confirmar.';ok.classList.add('show');}
-      toast('Aviso enviado ao Master/Admin ('+planName+').');
-    }).catch(function(err){
-      console.warn('[HT payment request]',err);
-      if(ok){ok.textContent='Não foi possível enviar o aviso. Tente novamente.';ok.classList.add('show');}
-    });
+
+      var payload={
+        email:e,
+        name:uname||'',
+        plan:plan,
+        planName:planName,
+        academyId:academyId||'',
+        academyName:academyName||'',
+        status:'pending',
+        requestedAt:Date.now(),
+        updatedAt:Date.now()
+      };
+
+      // local sempre
+      try{
+        var map={};
+        try{ map=JSON.parse(localStorage.getItem('htPaymentRequestsV1')||'{}')||{}; }catch(eL){ map={}; }
+        map[e]=payload;
+        localStorage.setItem('htPaymentRequestsV1', JSON.stringify(map));
+      }catch(eLoc){}
+
+      // gymmaster
+      try{
+        var gData=null;
+        try{ if(typeof window.htGmReload==='function') gData=window.htGmReload(); }catch(eR){}
+        if(!gData){
+          try{ var gr=localStorage.getItem('gymmasterFullV7'); if(gr) gData=JSON.parse(gr); }catch(eG){}
+        }
+        if(gData && gData.academies){
+          if(!(payload.academyId && gData.academies[payload.academyId])){
+            Object.keys(gData.academies).forEach(function(aid){
+              var ac=gData.academies[aid];
+              if(!ac||!ac.students) return;
+              Object.keys(ac.students).forEach(function(sid){
+                var st=ac.students[sid];
+                if(st && String(st.email||'').toLowerCase()===e){
+                  payload.academyId=aid;
+                  payload.academyName=ac.name||aid;
+                }
+              });
+            });
+          } else {
+            payload.academyName=gData.academies[payload.academyId].name||payload.academyId;
+          }
+          if(payload.academyId && gData.academies[payload.academyId]){
+            var ac2=gData.academies[payload.academyId];
+            ac2.pendingPays=ac2.pendingPays||{};
+            ac2.pendingPays[e]=Object.assign({},payload);
+            if(ac2.students){
+              Object.keys(ac2.students).forEach(function(sid){
+                var st=ac2.students[sid];
+                if(st && String(st.email||'').toLowerCase()===e){
+                  st.paymentStatus='pending_confirm';
+                  st.paymentPending=true;
+                  st.requestedPlan=payload.plan;
+                  st.lastPaymentRequestAt=payload.requestedAt;
+                }
+              });
+            }
+          }
+          gData.masterPendingPays=gData.masterPendingPays||{};
+          gData.masterPendingPays[e]=Object.assign({},payload);
+          try{
+            if(typeof window.htGmSave==='function') window.htGmSave();
+            else localStorage.setItem('gymmasterFullV7', JSON.stringify(gData));
+          }catch(eS){
+            try{ localStorage.setItem('gymmasterFullV7', JSON.stringify(gData)); }catch(eS2){}
+          }
+        }
+      }catch(eGm){ console.warn('[HT pay→academia]', eGm); }
+
+      // firebase opcional
+      try{
+        var db=fb();
+        if(db){
+          db.collection('paymentRequests').doc(key(e)).set(payload,{merge:true}).then(function(){
+            try{
+              db.collection('users').doc(key(e)).set({
+                email:e, paymentPending:true, requestedPlan:plan, lastPaymentRequestAt:payload.requestedAt, updatedAt:payload.updatedAt,
+                academyId:payload.academyId||'', academyName:payload.academyName||''
+              },{merge:true});
+            }catch(x){}
+          }).catch(function(err){ console.warn('[HT payment request]',err); });
+        }
+      }catch(eFb){}
+
+      showMsg('✅ Pagamento informado ('+planName+'). Master'+(payload.academyId?' e academia':'')+' foram avisados. Aguarde a liberação.', true);
+    }catch(err){
+      try{ if(typeof toast==='function') toast('Erro ao avisar pagamento. Tente de novo.'); }catch(e){}
+      try{ console.warn(err); }catch(e2){}
+      try{ alert('Erro ao avisar pagamento: '+(err&&err.message?err.message:err)); }catch(e3){}
+    }
   };
 
-  /* ===== ADMIN: APROVAR PAGAMENTO ===== */
   window.htApprovePayment=function(e){
     var db=fb(); e=String(e||'').toLowerCase().trim();
     if(!db||!e) return;
@@ -15906,19 +16476,29 @@ function getSess() {
         }
       } catch (e4) {}
       try {
-        // força editor de molduras (studio com furo)
-        if (typeof buildStudio === 'function') buildStudio();
-        if (typeof window.htBuildFrameStudio === 'function') window.htBuildFrameStudio();
-        var sec = document.getElementById('adminFramesSection') || document.getElementById('adminPanelFrames');
-        if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (panelId === 'adminPanelPay') {
+          if (typeof loadAdminPayFields === 'function') loadAdminPayFields();
+          var paySec = document.getElementById('adminPaySection');
+          if (paySec) {
+            paySec.style.display = 'block';
+            paySec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        } else {
+          // força editor de molduras (studio com furo)
+          if (typeof buildStudio === 'function') buildStudio();
+          if (typeof window.htBuildFrameStudio === 'function') window.htBuildFrameStudio();
+          var sec = document.getElementById('adminFramesSection') || document.getElementById('adminPanelFrames');
+          if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
       } catch (e5) {}
-      toast('Painel Admin · Molduras e branding');
+      toast(panelId === 'adminPanelPay' ? 'Painel Admin · Pagamentos dos planos' : 'Painel Admin · Molduras e branding');
     }, 120);
   }
 
   function openHeltonAdminAccounts() { openHeltonAdminFromMaster('adminPanelAccounts'); }
   function openHeltonAdminBrand() { openHeltonAdminFromMaster('adminPanelEditor'); }
   function openHeltonAdminFrames() { openHeltonAdminFromMaster('adminPanelFrames'); }
+  function openHeltonAdminPay() { openHeltonAdminFromMaster('adminPanelPay'); }
 
   function screenMasterDash() {
     var sess = getSess();
@@ -15963,6 +16543,9 @@ function getSess() {
       })() +
       '<button class="gmBtn" id="gmFrames" style="margin-top:8px;background:#168cff">🖼️ Molduras Master — estúdio completo</button>' +
       '<button class="gmBtn ghost" id="gmHeltonAdmin" style="margin-top:8px">🛡️ Painel Admin completo (Helton)</button>' +
+      '<button class="gmBtn" id="gmStudentAppPlans" style="margin-top:8px;background:linear-gradient(135deg,#0f9f55,#20e083);color:#03130b;font-weight:950">💳 Pagamentos dos planos (Básico / Intermediário / VIP)</button>' +
+      '<button class="gmBtn" id="gmMasterRanking" style="margin-top:8px;background:linear-gradient(135deg,#7a5200,#ffbd3e);color:#03130b;font-weight:950">🏆 Ranking — desafios semanais</button>' +
+      '<button class="gmBtn" id="gmPendingPays" style="margin-top:8px;background:linear-gradient(135deg,#5a1010,#e11);font-weight:950">⏳ Aguardando liberação — Já paguei</button>' +
       '<button class="gmBtn ghost" id="gmUnits" style="margin-top:8px">Ver unidades (academias)</button>' +
       '<button class="gmBtn ghost" id="gmNewUnit" style="margin-top:8px">+ Cadastrar unidade</button>' +
       '<button class="gmBtn ghost" id="gmPlans" style="margin-top:8px">Planos disponíveis</button>' +
@@ -16001,6 +16584,9 @@ function getSess() {
       go(screenMasterDash);
     };
     if (document.getElementById('gmHeltonAdmin')) document.getElementById('gmHeltonAdmin').onclick = function () { openHeltonAdminAccounts(); };
+    if (document.getElementById('gmStudentAppPlans')) document.getElementById('gmStudentAppPlans').onclick = function () { go(screenStudentAppPlans); };
+    if (document.getElementById('gmMasterRanking')) document.getElementById('gmMasterRanking').onclick = function () { go(screenMasterRanking); };
+    if (document.getElementById('gmPendingPays')) document.getElementById('gmPendingPays').onclick = function () { go(screenMasterPendingPays); };
     document.getElementById('gmUnits').onclick = function () { go(screenUnits); };
     document.getElementById('gmNewUnit').onclick = function () { go(function () { screenAcadForm(null); }); };
     document.getElementById('gmPlans').onclick = function () { go(screenPlans); };
@@ -16994,6 +17580,36 @@ function getSess() {
             (!hasMasterPay ? '<div style="font-size:11px;color:#e11;margin-top:8px">Master ainda não configurou cobrança desta unidade.</div>' : '') +
             '</div>');
         var studentPayEdit =
+          (function(){
+            var pendHtml = '';
+            try {
+              var pend = (a.pendingPays) || {};
+              var rows = Object.keys(pend).map(function(k){ return pend[k]; }).filter(function(r){ return r && (r.status==='pending' || !r.status); });
+              if(rows.length){
+                pendHtml = '<div class="gmCard" style="border-color:#e11">' +
+                  '<div style="font-weight:900;margin-bottom:8px">⏳ Aguardando liberação — Já paguei</div>' +
+                  '<p style="font-size:11px;color:#888;margin:0 0 10px">Alunos desta academia que avisaram pagamento. Você ou o Master podem liberar.</p>' +
+                  rows.map(function(r){
+                    var em = String(r.email||'').replace(/'/g,'');
+                    return '<div style="padding:10px;border-radius:12px;background:#0a0a0a;border:1px solid #333;margin-bottom:8px">' +
+                      '<b>' + esc(r.name||'Aluno') + '</b>' +
+                      '<div style="font-size:11px;color:#8ea0b8">' + esc(r.email||'') + '</div>' +
+                      '<div style="font-size:12px;color:#ffbd3e;margin-top:4px">Plano: ' + esc(r.planName||r.plan||'—') + '</div>' +
+                      '<div style="display:flex;gap:6px;margin-top:8px">' +
+                      '<button type="button" class="gmBtn sm" data-pend="ok" data-email="' + em + '" style="flex:1;background:#1a7a45">✅ Liberar 30d</button>' +
+                      '<button type="button" class="gmBtn sm dark" data-pend="no" data-email="' + em + '" style="flex:1">Recusar</button>' +
+                      '</div></div>';
+                  }).join('') + '</div>';
+              } else {
+                pendHtml = '<div class="gmCard" style="border-color:#333"><div style="font-weight:900;margin-bottom:6px">⏳ Aguardando liberação — Já paguei</div><div style="font-size:12px;color:#888">Nenhum aluno desta academia aguardando agora.</div></div>';
+              }
+            } catch(eP) { pendHtml = ''; }
+            return pendHtml;
+          })() +
+          '<div class="gmCard" style="border-color:#20e083">' +
+          '<div style="font-weight:900;margin-bottom:8px">💳 Planos do app (Básico / Intermediário / VIP)</div>' +
+          '<p style="font-size:11px;color:#888;margin:0 0 10px;line-height:1.4">Valor, link, Pix e QR de cada plano do app do aluno. Aparece em <b>Meus planos</b> e na assinatura.</p>' +
+          '<button type="button" class="gmBtn" id="gmOpenStudentAppPlans" style="background:#20e083;color:#03130b;font-weight:950">Abrir edição dos 3 planos</button></div>' +
           '<div class="gmCard" style="border-color:#168cff">' +
           '<div style="font-weight:900;margin-bottom:8px">💰 Cobrança dos alunos (sua academia)</div>' +
           '<p style="font-size:11px;color:#888;margin:0 0 10px;line-height:1.4">O aluno vê isso no <b>perfil do app</b> (somente leitura). Cole link, chave Pix e/ou imagem do QR Code.</p>' +
@@ -17073,6 +17689,59 @@ function getSess() {
           ac.studentPaymentQr=window.__gmPendingStudentQr||'';
           save(); toast('Pagamento dos alunos salvo — aluno verá no perfil'); paint();
         };
+        if (document.getElementById('gmOpenStudentAppPlans')) document.getElementById('gmOpenStudentAppPlans').onclick=function(){
+          try { go(screenStudentAppPlans); } catch(e){ toast('Não foi possível abrir planos'); }
+        };
+        body.querySelectorAll('button[data-pend]').forEach(function(btn){
+          btn.onclick=function(){
+            var em=String(btn.getAttribute('data-email')||'').toLowerCase().trim();
+            var act=btn.getAttribute('data-pend');
+            var d=load(); var ac=d.academies[academyId];
+            if(!ac) return;
+            ac.pendingPays=ac.pendingPays||{};
+            var row=ac.pendingPays[em]||{email:em};
+            if(act==='ok'){
+              var until=Date.now()+30*86400000;
+              row.status='approved'; row.approvedAt=Date.now(); row.paidUntil=until;
+              ac.pendingPays[em]=row;
+              if(ac.students){
+                Object.keys(ac.students).forEach(function(sid){
+                  var st=ac.students[sid];
+                  if(st && String(st.email||'').toLowerCase()===em){
+                    st.paymentStatus='paid'; st.paymentPending=false; st.accessStatus='active'; st.paidUntil=until;
+                  }
+                });
+              }
+              d.masterPendingPays=d.masterPendingPays||{};
+              if(d.masterPendingPays[em]) d.masterPendingPays[em]=Object.assign({},d.masterPendingPays[em],row);
+              save();
+              try{ if(typeof htApprovePayment==='function') htApprovePayment(em); }catch(e){}
+              try{
+                var localDb=(typeof authLoad==='function')?authLoad():null;
+                if(localDb&&localDb.users){
+                  var u=localDb.users[em]||{email:em,createdAt:Date.now()};
+                  u.paidUntil=until;u.blocked=false;u.paymentConfirmed=true;u.paymentPending=false;
+                  localDb.users[em]=u; if(typeof authSave==='function') authSave(localDb);
+                }
+              }catch(e2){}
+              toast('Liberado 30 dias: '+em);
+            } else {
+              row.status='rejected'; row.rejectedAt=Date.now();
+              ac.pendingPays[em]=row;
+              if(ac.students){
+                Object.keys(ac.students).forEach(function(sid){
+                  var st=ac.students[sid];
+                  if(st && String(st.email||'').toLowerCase()===em){ st.paymentStatus='rejected'; st.paymentPending=false; }
+                });
+              }
+              save();
+              try{ if(typeof htRejectPayment==='function') htRejectPayment(em); }catch(e){}
+              toast('Recusado: '+em);
+            }
+            paint();
+          };
+        });
+
         body.querySelectorAll('.gmPay').forEach(function (b) {
           b.onclick = function (ev) {
             try { if (ev) { ev.preventDefault(); ev.stopPropagation(); } } catch (e0) {}
@@ -17744,6 +18413,481 @@ if (tab === 'uso') {
         showErr('Não foi possível cadastrar o administrador. Detalhe: ' + (e && e.message ? e.message : 'erro desconhecido'));
       }
     };
+  }
+
+
+
+
+  /** Master: alunos que tocaram em "Já paguei" — aguardando liberação (por academia) */
+  function screenMasterPendingPays() {
+    var sess = getSess();
+    if (!sess || sess.role !== 'MASTER') return go(screenMasterLogin);
+
+    function loadLocalReqs() {
+      var map = {};
+      try {
+        var raw = localStorage.getItem('htPaymentRequestsV1');
+        if (raw) map = JSON.parse(raw) || {};
+      } catch (e) {}
+      var d = load();
+      if (d && d.masterPendingPays) {
+        Object.keys(d.masterPendingPays).forEach(function (k) {
+          map[k] = Object.assign({}, map[k] || {}, d.masterPendingPays[k]);
+        });
+      }
+      if (d && d.academies) {
+        Object.keys(d.academies).forEach(function (aid) {
+          var ac = d.academies[aid];
+          if (!ac || !ac.pendingPays) return;
+          Object.keys(ac.pendingPays).forEach(function (k) {
+            var row = Object.assign({}, ac.pendingPays[k]);
+            row.academyId = row.academyId || aid;
+            row.academyName = row.academyName || ac.name || aid;
+            map[k] = Object.assign({}, map[k] || {}, row);
+          });
+        });
+      }
+      return map;
+    }
+
+    function saveLocalReq(email, patch) {
+      email = String(email || '').toLowerCase().trim();
+      try {
+        var raw = localStorage.getItem('htPaymentRequestsV1');
+        var map = raw ? JSON.parse(raw) : {};
+        map[email] = Object.assign({}, map[email] || {}, patch, { email: email, updatedAt: Date.now() });
+        localStorage.setItem('htPaymentRequestsV1', JSON.stringify(map));
+      } catch (e) {}
+      var d = load();
+      d.masterPendingPays = d.masterPendingPays || {};
+      if (d.masterPendingPays[email]) d.masterPendingPays[email] = Object.assign({}, d.masterPendingPays[email], patch);
+      if (d.academies) {
+        Object.keys(d.academies).forEach(function (aid) {
+          var ac = d.academies[aid];
+          if (ac && ac.pendingPays && ac.pendingPays[email]) {
+            ac.pendingPays[email] = Object.assign({}, ac.pendingPays[email], patch);
+          }
+          if (ac && ac.students) {
+            Object.keys(ac.students).forEach(function (sid) {
+              var st = ac.students[sid];
+              if (st && String(st.email || '').toLowerCase() === email) {
+                if (patch.status === 'approved') {
+                  st.paymentStatus = 'paid';
+                  st.paymentPending = false;
+                  st.accessStatus = 'active';
+                  st.paidUntil = patch.paidUntil || (Date.now() + 30 * 86400000);
+                } else if (patch.status === 'rejected') {
+                  st.paymentStatus = 'rejected';
+                  st.paymentPending = false;
+                }
+              }
+            });
+          }
+        });
+      }
+      save();
+    }
+
+    function approve(email) {
+      email = String(email || '').toLowerCase().trim();
+      var until = Date.now() + 30 * 86400000;
+      saveLocalReq(email, { status: 'approved', approvedAt: Date.now(), paidUntil: until });
+      try {
+        if (typeof htApprovePayment === 'function') htApprovePayment(email);
+      } catch (e) {}
+      try {
+        var localDb = (typeof authLoad === 'function') ? authLoad() : null;
+        if (localDb && localDb.users) {
+          var u = localDb.users[email] || { email: email, createdAt: Date.now() };
+          u.paidUntil = until;
+          u.blocked = false;
+          u.paymentConfirmed = true;
+          u.paymentPending = false;
+          localDb.users[email] = u;
+          if (typeof authSave === 'function') authSave(localDb);
+        }
+      } catch (e2) {}
+      toast('Liberado 30 dias: ' + email);
+      paint();
+    }
+
+    function reject(email) {
+      email = String(email || '').toLowerCase().trim();
+      saveLocalReq(email, { status: 'rejected', rejectedAt: Date.now() });
+      try { if (typeof htRejectPayment === 'function') htRejectPayment(email); } catch (e) {}
+      toast('Recusado: ' + email);
+      paint();
+    }
+
+    function paint() {
+      var map = loadLocalReqs();
+      var pending = Object.keys(map).map(function (k) { return map[k]; }).filter(function (r) {
+        return r && (r.status === 'pending' || !r.status);
+      });
+      // agrupa por academia
+      var groups = {};
+      pending.forEach(function (r) {
+        var g = r.academyId ? (r.academyName || r.academyId) : 'Sem academia (aluno direto)';
+        groups[g] = groups[g] || [];
+        groups[g].push(r);
+      });
+      var keys = Object.keys(groups).sort();
+
+      openUI();
+      root().innerHTML =
+        '<div class="gmApp">' +
+        '<div class="gmTop"><div><h1>⏳ Já paguei</h1><div class="sub">Aguardando liberação · por academia</div></div>' +
+        '<button class="gmIcon" id="gmBack">←</button></div>' +
+        '<div class="gmPad">' +
+        '<div class="gmCard" style="border-color:#e11">' +
+        '<p style="font-size:12px;color:#c5d3e3;margin:0;line-height:1.45">Alunos que tocaram em <b>Já paguei</b>. Se forem de academia, aparecem no grupo da unidade. Libere 30 dias após confirmar o Pix.</p>' +
+        '<div style="margin-top:8px;font-size:12px;color:#ffbd3e;font-weight:900">' + pending.length + ' aguardando</div></div>' +
+        (pending.length ? keys.map(function (gName) {
+          return '<div class="gmCard" style="border-color:#315075">' +
+            '<b style="color:#56b5ff">🏢 ' + esc(gName) + '</b>' +
+            '<div style="font-size:11px;color:#888;margin:4px 0 10px">' + groups[gName].length + ' pedido(s)</div>' +
+            groups[gName].map(function (r) {
+              var em = String(r.email || '').replace(/'/g, '');
+              return '<div style="padding:12px;border-radius:12px;background:#0a0a0a;border:1px solid #333;margin-bottom:8px">' +
+                '<div style="font-weight:900;color:#fff">' + esc(r.name || 'Aluno') + '</div>' +
+                '<div style="font-size:11px;color:#8ea0b8;margin-top:3px">' + esc(r.email || '') + '</div>' +
+                '<div style="font-size:12px;color:#ffbd3e;margin-top:6px">Plano: <b>' + esc(r.planName || r.plan || '—') + '</b></div>' +
+                '<div style="font-size:10px;color:#777;margin-top:4px">Avisou em ' + (r.requestedAt ? new Date(r.requestedAt).toLocaleString('pt-BR') : '—') + '</div>' +
+                '<div style="display:flex;gap:6px;margin-top:10px">' +
+                '<button type="button" class="gmBtn sm" data-act="ok" data-email="' + em + '" style="flex:1;background:#1a7a45">✅ Liberar 30 dias</button>' +
+                '<button type="button" class="gmBtn sm dark" data-act="no" data-email="' + em + '" style="flex:1">Recusar</button>' +
+                '</div></div>';
+            }).join('') +
+            '</div>';
+        }).join('') : '<div class="gmCard"><div style="font-size:12px;color:#888">Nenhum pagamento aguardando liberação agora.</div></div>') +
+        '</div></div>';
+
+      document.getElementById('gmBack').onclick = function () { go(screenMasterDash); };
+      root().querySelectorAll('button[data-act]').forEach(function (btn) {
+        btn.onclick = function () {
+          var em = btn.getAttribute('data-email');
+          var act = btn.getAttribute('data-act');
+          if (act === 'ok') approve(em);
+          else reject(em);
+        };
+      });
+    }
+
+    paint();
+  }
+
+  /** Master: desafios semanais do ranking (aparecem na tela Ranking dos alunos) */
+  function screenMasterRanking() {
+    var sess = getSess();
+    if (!sess || sess.role !== 'MASTER') return go(screenMasterLogin);
+
+    function loadChallenges() {
+      try {
+        var raw = localStorage.getItem('htMasterChallengesV1');
+        if (raw) {
+          var a = JSON.parse(raw);
+          if (Array.isArray(a)) return a;
+        }
+      } catch (e) {}
+      return [];
+    }
+    function saveChallenges(list) {
+      try { localStorage.setItem('htMasterChallengesV1', JSON.stringify(list || [])); } catch (e) {}
+      try {
+        if (window.htFirebase && window.htFirebase.db) {
+          window.htFirebase.db.collection('appConfig').doc('rankingChallenges').set({
+            list: list || [],
+            updatedAt: Date.now()
+          }, { merge: true }).catch(function () {});
+        }
+      } catch (e2) {}
+    }
+
+    var list = loadChallenges().slice().sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
+    openUI();
+    root().innerHTML =
+      '<div class="gmApp">' +
+      '<div class="gmTop"><div><h1>🏆 Ranking</h1><div class="sub">Desafios semanais para os alunos</div></div>' +
+      '<button class="gmIcon" id="gmBack">←</button></div>' +
+      '<div class="gmPad">' +
+      '<div class="gmCard" style="border-color:#ffbd3e">' +
+      '<p style="font-size:12px;color:#c5d3e3;line-height:1.45;margin:0 0 10px">Lance um desafio semanal. O aluno precisa <b>concluir a semana no Treino com cargas registradas</b> para o desafio contar e poder entrar no ranking com pontuação e selo.</p>' +
+      '<label class="gmLab">Título do desafio</label>' +
+      '<input class="gmIn" id="rkChTitle" placeholder="Ex: Semana da carga máxima"/>' +
+      '<label class="gmLab">Descrição / regra</label>' +
+      '<textarea class="gmIn" id="rkChText" rows="4" style="min-height:90px;padding:12px" placeholder="Ex: Complete os 5 dias com mais carga total nos exercícios. Top 10 por intensidade de carga."></textarea>' +
+      '<label class="gmLab">Semana (opcional)</label>' +
+      '<input class="gmIn" id="rkChWeek" placeholder="Ex: 06/04 a 12/04"/>' +
+      '<button class="gmBtn" id="rkChSave" style="margin-top:10px;background:#ffbd3e;color:#03130b;font-weight:950">🚀 Publicar desafio na tela Ranking</button>' +
+      '</div>' +
+      '<div class="gmCard"><b>Desafios publicados</b><div id="rkChList" style="margin-top:10px"></div></div>' +
+      '</div></div>';
+
+    document.getElementById('gmBack').onclick = function () { go(screenMasterDash); };
+
+    function renderList() {
+      var box = document.getElementById('rkChList');
+      if (!box) return;
+      list = loadChallenges().slice().sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
+      if (!list.length) {
+        box.innerHTML = '<div style="font-size:12px;color:#888">Nenhum desafio ainda.</div>';
+        return;
+      }
+      box.innerHTML = list.map(function (c, i) {
+        var on = c.active !== false;
+        return '<div style="padding:12px;border-radius:12px;border:1px solid ' + (on ? '#ffbd3e55' : '#333') + ';background:#0a0a0a;margin-bottom:8px">' +
+          '<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">' +
+          '<div><b style="color:#ffbd3e">' + esc(c.title || 'Desafio') + '</b>' +
+          (c.week ? '<div style="font-size:11px;color:#56b5ff;margin-top:3px">📅 ' + esc(c.week) + '</div>' : '') +
+          '<div style="font-size:12px;color:#ccc;margin-top:6px;line-height:1.4">' + esc(c.text || '') + '</div>' +
+          '<div style="font-size:10px;color:#777;margin-top:6px">' + (on ? '✅ Ativo na tela dos alunos' : '⏸ Pausado') + '</div></div></div>' +
+          '<div style="display:flex;gap:6px;margin-top:10px">' +
+          '<button type="button" class="gmBtn sm" data-act="toggle" data-i="' + i + '" style="flex:1;background:' + (on ? '#5a1010' : '#1a7a45') + '">' + (on ? 'Pausar' : 'Ativar') + '</button>' +
+          '<button type="button" class="gmBtn sm dark" data-act="del" data-i="' + i + '" style="flex:1">Apagar</button>' +
+          '</div></div>';
+      }).join('');
+      box.querySelectorAll('button[data-act]').forEach(function (btn) {
+        btn.onclick = function () {
+          var i = Number(btn.getAttribute('data-i'));
+          var act = btn.getAttribute('data-act');
+          var all = loadChallenges().slice().sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
+          if (!all[i]) return;
+          if (act === 'del') {
+            all.splice(i, 1);
+            saveChallenges(all);
+            toast('Desafio apagado');
+          } else {
+            all[i].active = all[i].active === false ? true : false;
+            saveChallenges(all);
+            toast(all[i].active !== false ? 'Desafio ativo' : 'Desafio pausado');
+          }
+          renderList();
+        };
+      });
+    }
+
+    document.getElementById('rkChSave').onclick = function () {
+      var title = (document.getElementById('rkChTitle').value || '').trim();
+      var txt = (document.getElementById('rkChText').value || '').trim();
+      var week = (document.getElementById('rkChWeek').value || '').trim();
+      if (!title) { toast('Digite o título do desafio'); return; }
+      if (!txt) { toast('Digite a descrição do desafio'); return; }
+      var all = loadChallenges();
+      // desativa anteriores e publica o novo como ativo
+      all.forEach(function (c) { c.active = false; });
+      all.unshift({
+        id: 'ch_' + Date.now(),
+        title: title,
+        text: txt,
+        week: week,
+        active: true,
+        createdAt: Date.now()
+      });
+      saveChallenges(all);
+      document.getElementById('rkChTitle').value = '';
+      document.getElementById('rkChText').value = '';
+      document.getElementById('rkChWeek').value = '';
+      toast('Desafio publicado na tela Ranking dos alunos');
+      renderList();
+    };
+
+    renderList();
+  }
+
+  /** Pagamentos dos 3 planos do APP do aluno (Básico / Intermediário / VIP)
+   *  Salva em heltonPayConfigV1 — mesma config de Meus planos / Assinatura
+   */
+  function screenStudentAppPlans() {
+    var sess = getSess();
+    if (!sess || (sess.role !== 'MASTER' && sess.role !== 'ACADEMY_ADMIN')) {
+      return go(sess && sess.role === 'ACADEMY_ADMIN' ? function(){ screenUnit(sess.academyId); } : screenMasterLogin);
+    }
+
+    function readCfg() {
+      try {
+        if (typeof getPayConfig === 'function') return getPayConfig();
+      } catch (e) {}
+      try {
+        var raw = localStorage.getItem('heltonPayConfigV1');
+        if (raw) return JSON.parse(raw);
+      } catch (e2) {}
+      return { plans: {} };
+    }
+
+    function planRow(id, title, color, p) {
+      p = p || {};
+      var qr = p.qrDataUrl || '';
+      return (
+        '<div class="gmCard" style="border:2px solid ' + color + ';margin-bottom:12px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">' +
+        '<b style="color:' + color + ';font-size:15px">' + title + '</b>' +
+        '<span style="font-size:10px;color:#888">plano: ' + id + '</span></div>' +
+        '<label class="gmLab">Valor exibido</label>' +
+        '<input class="gmIn" id="sapPrice_' + id + '" value="' + esc(p.priceLabel || '') + '" placeholder="R$ 10,00"/>' +
+        '<label class="gmLab">Período</label>' +
+        '<input class="gmIn" id="sapPeriod_' + id + '" value="' + esc(p.periodLabel || 'por mês • 30 dias de acesso') + '" placeholder="por mês • 30 dias"/>' +
+        '<label class="gmLab">Link de pagamento</label>' +
+        '<input class="gmIn" id="sapLink_' + id + '" value="' + esc(p.link || '') + '" placeholder="https://link.infinitepay.io/..."/>' +
+        '<label class="gmLab">Chave Pix</label>' +
+        '<input class="gmIn" id="sapPix_' + id + '" value="' + esc(p.pixKey || '') + '" placeholder="CPF, e-mail, telefone ou chave aleatória"/>' +
+        '<label class="gmLab">QR Code (imagem)</label>' +
+        '<input class="gmIn" type="file" id="sapQr_' + id + '" accept="image/*"/>' +
+        (qr
+          ? '<img id="sapQrPrev_' + id + '" src="' + qr + '" style="max-width:160px;margin:8px 0;border-radius:12px;background:#fff;padding:6px;display:block"/>'
+          : '<img id="sapQrPrev_' + id + '" style="display:none;max-width:160px;margin:8px 0;border-radius:12px;background:#fff;padding:6px"/>') +
+        '<button type="button" class="gmBtn sm dark" id="sapQrClear_' + id + '" style="width:auto;margin-bottom:8px">Remover QR</button>' +
+        '<label class="gmLab">Texto do botão (opcional)</label>' +
+        '<input class="gmIn" id="sapBtn_' + id + '" value="' + esc(p.buttonText || '') + '" placeholder="Pagar com Pix"/>' +
+        '<button class="gmBtn" id="sapSave_' + id + '" style="margin-top:8px;background:' + color + ';color:#03130b;font-weight:950">💾 Salvar só ' + title.replace(/^[^ ]+ /, '') + '</button>' +
+        '</div>'
+      );
+    }
+
+    var cfg = readCfg();
+    var plans = (cfg && cfg.plans) || {};
+    openUI();
+    root().innerHTML =
+      '<div class="gmApp">' +
+      '<div class="gmTop"><div><h1>💳 Planos do aluno</h1><div class="sub">Básico · Intermediário · VIP</div></div>' +
+      '<button class="gmIcon" id="gmBack">←</button></div>' +
+      '<div class="gmPad">' +
+      '<div class="gmCard" style="border-color:#20e083">' +
+      '<p style="font-size:12px;color:#c5d3e3;line-height:1.45;margin:0">Configure <b>valor</b>, <b>link</b>, <b>chave Pix</b> e/ou <b>QR Code</b> de cada plano. O aluno vê isso em <b>Meus planos</b> (valor) e na <b>Assinatura</b> (link/Pix/QR).</p>' +
+      '</div>' +
+      planRow('basico', '🟢 PLANO BÁSICO', '#56b5ff', plans.basico) +
+      planRow('intermediario', '🟡 PLANO INTERMEDIÁRIO', '#ffbd3e', plans.intermediario) +
+      planRow('vip', '🟣 PLANO VIP', '#f04fb8', plans.vip) +
+      '<button class="gmBtn" id="sapSaveAll" style="background:#20e083;color:#03130b;font-weight:950">💾 Salvar os 3 planos</button>' +
+      '<button class="gmBtn ghost" id="sapOpenAdmin" style="margin-top:8px">Abrir também no painel Admin Helton</button>' +
+      '</div></div>';
+
+    document.getElementById('gmBack').onclick = function () {
+      if (sess.role === 'ACADEMY_ADMIN' && sess.academyId) go(function () { screenUnit(sess.academyId); });
+      else go(screenMasterDash);
+    };
+
+    function compressQr(file, cb) {
+      try {
+        var r = new FileReader();
+        r.onload = function () {
+          var img = new Image();
+          img.onload = function () {
+            try {
+              var maxSide = 480, w = img.naturalWidth || img.width || 1, h = img.naturalHeight || img.height || 1;
+              var sc = Math.min(1, maxSide / Math.max(w, h));
+              var c = document.createElement('canvas');
+              c.width = Math.max(1, Math.round(w * sc));
+              c.height = Math.max(1, Math.round(h * sc));
+              c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+              cb(c.toDataURL('image/jpeg', 0.85));
+            } catch (e) { cb(r.result); }
+          };
+          img.onerror = function () { cb(r.result); };
+          img.src = r.result;
+        };
+        r.readAsDataURL(file);
+      } catch (e) { toast('Falha ao ler QR'); }
+    }
+
+    function bindPlan(id) {
+      var qrInput = document.getElementById('sapQr_' + id);
+      if (qrInput) qrInput.onchange = function () {
+        var f = this.files && this.files[0];
+        if (!f) return;
+        compressQr(f, function (dataUrl) {
+          var prev = document.getElementById('sapQrPrev_' + id);
+          if (prev) { prev.src = dataUrl; prev.style.display = 'block'; }
+          window['__sapQr_' + id] = dataUrl;
+          toast('QR carregado — clique em Salvar');
+        });
+      };
+      var clearBtn = document.getElementById('sapQrClear_' + id);
+      if (clearBtn) clearBtn.onclick = function () {
+        window['__sapQr_' + id] = '';
+        var prev = document.getElementById('sapQrPrev_' + id);
+        if (prev) { prev.removeAttribute('src'); prev.style.display = 'none'; }
+        if (qrInput) qrInput.value = '';
+        toast('QR removido — salve o plano');
+      };
+      // keep existing qr in memory
+      var prev0 = document.getElementById('sapQrPrev_' + id);
+      if (prev0 && prev0.getAttribute('src')) window['__sapQr_' + id] = prev0.getAttribute('src');
+      var saveBtn = document.getElementById('sapSave_' + id);
+      if (saveBtn) saveBtn.onclick = function () { saveOne(id, false); };
+    }
+
+    function readOne(id) {
+      var price = (document.getElementById('sapPrice_' + id).value || '').trim() || 'R$ 10';
+      if (price.indexOf('R$') < 0) price = 'R$ ' + price;
+      var period = (document.getElementById('sapPeriod_' + id).value || '').trim() || 'por mês • 30 dias de acesso';
+      var link = (document.getElementById('sapLink_' + id).value || '').trim();
+      var pix = (document.getElementById('sapPix_' + id).value || '').trim();
+      var btn = (document.getElementById('sapBtn_' + id).value || '').trim();
+      var qr = window['__sapQr_' + id] || '';
+      if (!qr) {
+        var prev = document.getElementById('sapQrPrev_' + id);
+        if (prev && prev.getAttribute('src')) qr = prev.getAttribute('src');
+      }
+      if (link && link.indexOf('http') !== 0) {
+        toast('Link inválido em ' + id + ' — use https://...');
+        return null;
+      }
+      return {
+        priceLabel: price,
+        periodLabel: period,
+        link: link,
+        pixKey: pix,
+        qrDataUrl: qr || '',
+        buttonText: btn || null
+      };
+    }
+
+    function saveOne(id, silent) {
+      var data = readOne(id);
+      if (!data) return false;
+      try {
+        if (typeof adminSaveOnePlan === 'function' && typeof getPayConfig === 'function') {
+          // preenche form do admin se existir (opcional) — grava direto
+        }
+        var cfg = readCfg();
+        cfg.plans = cfg.plans || {};
+        cfg.plans[id] = data;
+        var m = cfg.plans.basico || data;
+        cfg.priceLabel = m.priceLabel;
+        cfg.priceShort = String(m.priceLabel || '').replace(/R\$\s*/i, '').trim();
+        cfg.periodLabel = m.periodLabel;
+        cfg.link = m.link || '';
+        cfg.buttonText = m.buttonText;
+        cfg.defaultPlan = 'basico';
+        localStorage.setItem('heltonPayConfigV1', JSON.stringify(cfg));
+        if (typeof savePayConfig === 'function') savePayConfig(cfg);
+        if (typeof applyPayConfigToUI === 'function') applyPayConfigToUI();
+        if (typeof htRenderPlans === 'function') htRenderPlans();
+        if (typeof refreshPayLink === 'function') refreshPayLink();
+        try {
+          if (window.htFirebase && window.htFirebase.db) {
+            window.htFirebase.db.collection('appConfig').doc('pay').set({ plans: cfg.plans, updatedAt: Date.now() }, { merge: true }).catch(function () {});
+          }
+        } catch (eCloud) {}
+        if (!silent) toast((id === 'basico' ? 'Básico' : id === 'vip' ? 'VIP' : 'Intermediário') + ' salvo: ' + data.priceLabel);
+        return true;
+      } catch (e) {
+        toast('Erro ao salvar plano');
+        return false;
+      }
+    }
+
+    ['basico', 'intermediario', 'vip'].forEach(bindPlan);
+    document.getElementById('sapSaveAll').onclick = function () {
+      var ok = true;
+      ['basico', 'intermediario', 'vip'].forEach(function (id) { if (!saveOne(id, true)) ok = false; });
+      if (ok) toast('3 planos salvos — aluno já vê os valores');
+    };
+    if (document.getElementById('sapOpenAdmin')) {
+      document.getElementById('sapOpenAdmin').onclick = function () {
+        try { openHeltonAdminPay(); } catch (e) { openHeltonAdminFromMaster('adminPanelPay'); }
+      };
+    }
   }
 
   function screenPlans() {
@@ -23837,8 +24981,17 @@ function htAccessSnapshot(){
   return {ok:true, reason:'unknown'};
 }
 function htDesiredPlan(){
-  htEnsureState();
-  return (state && state.plan && (state.plan.desired || state.plan.tier)) || 'basico';
+  try{
+    var ls = localStorage.getItem('htDesiredPlanV1');
+    if(ls) return (typeof htNormalizePlanId==='function'?htNormalizePlanId(ls):ls);
+  }catch(e){}
+  try{ htEnsureState(); }catch(e){}
+  try{
+    if(typeof state!=='undefined' && state && state.plan){
+      return state.plan.desired || state.plan.tier || 'basico';
+    }
+  }catch(e){}
+  return 'basico';
 }
 function htGetPlan(){
   htEnsureState();
@@ -23852,13 +25005,20 @@ function htGetPlan(){
   return 'basico';
 }
 function htSetPlan(tier){
-  htEnsureState();
+  try{ htEnsureState(); }catch(e){}
   tier = String(tier||'basico');
-  state.plan = state.plan || {};
-  state.plan.desired = tier;
-  state.plan.tier = tier; // preferência do aluno
-  state.plan.requestedAt = Date.now();
-  try{ save(); }catch(e){}
+  try{ if(typeof htNormalizePlanId==='function') tier=htNormalizePlanId(tier); }catch(e){}
+  try{ localStorage.setItem('htDesiredPlanV1', tier); }catch(e){}
+  try{
+    if(typeof state!=='undefined' && state){
+      state.plan = state.plan || {};
+      state.plan.desired = tier;
+      state.plan.tier = tier; // preferência do aluno
+      state.plan.requestedAt = Date.now();
+      try{ save(); }catch(e){}
+    }
+  }catch(e){}
+  try{ if(typeof applyPayConfigToUI==='function') applyPayConfigToUI(); }catch(e){}
   htRenderPlans();
   var st = htAccessSnapshot();
   var nameMap={basico:'Básico',intermediario:'Intermediário',vip:'VIP'};
@@ -23886,20 +25046,105 @@ function htRenderPlans(){
   else if(st.reason==='paid') statusLine='✅ Acesso pago ativo'+(st.left!=null?(' · '+st.left+' dia(s)'):'')+'.';
   else if(st.reason==='admin') statusLine='🛡️ Sessão Master/Admin.';
   else statusLine='🔒 Teste encerrado. Escolher plano NÃO libera acesso — pague e toque em “Já paguei”. O Master confirma.';
+
+  function payBlockHtml(planId){
+    var pc = null;
+    try{ if(typeof getPlanPayConfig==='function') pc = getPlanPayConfig(planId); }catch(e){}
+    if(!pc) return '';
+    var link = (pc.link || '').trim();
+    // não mostra link padrão vazio de demo se for só o default sem config real do master
+    var hasLink = !!(link && link.indexOf('http')===0);
+    var hasPix = !!(pc.pixKey && String(pc.pixKey).trim());
+    var hasQr = !!(pc.qrDataUrl && String(pc.qrDataUrl).trim());
+    if(!hasLink && !hasPix && !hasQr){
+      return '<div style="margin-top:10px;padding:10px;border-radius:12px;background:#0b1525;border:1px dashed #315075;font-size:11px;color:#8ea0b8">Pagamento ainda não configurado pelo Master para este plano.</div>';
+    }
+    var html = '<div class="htPlanPayBox" style="margin-top:12px;padding:12px;border-radius:14px;background:#050c16;border:1px solid #315075">';
+    html += '<div style="font-size:11px;font-weight:900;color:#56b5ff;margin-bottom:8px">💳 Como pagar o plano '+pc.name+'</div>';
+    if(hasQr){
+      html += '<div style="text-align:center;margin-bottom:10px">'+
+        '<img src="'+pc.qrDataUrl+'" alt="QR Pix '+pc.name+'" style="max-width:200px;width:100%;border-radius:12px;background:#fff;padding:8px"/>'+
+        '<div style="font-size:10px;color:#8ea0b8;margin-top:6px">QR Code Pix</div></div>';
+    }
+    if(hasPix){
+      html += '<div style="margin-bottom:10px">'+
+        '<div style="font-size:10px;color:#ffbd3e;font-weight:900;margin-bottom:4px">Chave Pix</div>'+
+        '<div style="font-size:12px;font-weight:800;word-break:break-all;color:#fff;margin-bottom:8px">'+String(pc.pixKey).replace(/</g,'&lt;')+'</div>'+
+        '<button type="button" class="htPlanBtn" style="width:100%;background:#0b1525;border:1px solid #315075;color:#fff" onclick="event.stopPropagation();htCopyPlanPix(\''+planId+'\')">📋 Copiar chave Pix</button>'+
+      '</div>';
+    }
+    if(hasLink){
+      html += '<button type="button" class="htPlanBtn" style="width:100%;margin-top:4px;background:linear-gradient(135deg,#20e083,#0f9f55);color:#03130b;font-weight:950" onclick="event.stopPropagation();htOpenPlanPayLink(\''+planId+'\')">'+(pc.buttonText || ('Pagar '+pc.priceLabel+' — abrir link'))+'</button>';
+    }
+    html += '</div>';
+    return html;
+  }
+
   box.innerHTML =
     '<div style="grid-column:1/-1;margin:0 0 10px;padding:12px;border-radius:14px;background:#0b1525;border:1px solid #315075;font-size:12px;line-height:1.45;color:#c5d3e3">'+statusLine+'</div>'+
     HT_PLANS.map(function(p){
       var isDesired = p.id===desired;
       var isActive = p.id===active && st.ok;
       var label = isActive ? 'Plano em uso' : (isDesired ? 'Selecionado' : ('Escolher '+p.name));
-      return '<div class="htPlanCard'+(isDesired?' active':'')+'"><h3>'+p.name+(isActive?' ✓':'')+'</h3><ul>'+p.features.map(function(f){return '<li>'+f+'</li>'}).join('')+'</ul><button class="htPlanBtn'+(isDesired?' current':'')+'" onclick="htSetPlan(\''+p.id+'\')">'+label+'</button></div>';
+      var priceLabel = '';
+      var periodLabel = '';
+      try{
+        if(typeof getPlanPayConfig === 'function'){
+          var pc = getPlanPayConfig(p.id);
+          if(pc){
+            priceLabel = pc.priceLabel || '';
+            periodLabel = pc.periodLabel || '';
+          }
+        }
+      }catch(ePrice){}
+      var priceHtml = '';
+      if(priceLabel){
+        priceHtml = '<div class="htPlanPrice" style="color:#ffbd3e;font-weight:950;font-size:20px;margin:8px 0 2px">'+priceLabel+'</div>';
+        if(periodLabel) priceHtml += '<div style="font-size:11px;color:#8ea0b8;margin-bottom:8px">'+periodLabel+'</div>';
+      }
+      // mostra pagamento em todos os cards (cada plano com seu link/pix/qr)
+      var payHtml = payBlockHtml(p.id);
+      return '<div class="htPlanCard'+(isDesired?' active':'')+'"><h3>'+p.name+(isActive?' ✓':'')+'</h3>'+priceHtml+'<ul>'+p.features.map(function(f){return '<li>'+f+'</li>'}).join('')+'</ul><button class="htPlanBtn'+(isDesired?' current':'')+'" onclick="htSetPlan(\''+p.id+'\')">'+label+'</button>'+payHtml+'</div>';
     }).join('')+
-    '<div id="htPlanPayHint" style="grid-column:1/-1;display:'+(st.ok?'none':'block')+';margin-top:6px;padding:14px;border-radius:14px;background:#1a1408;border:1px solid #6d5010">'+
-      '<b style="color:#ffbd3e">Como liberar depois dos 10 dias</b>'+
-      '<p style="font-size:12px;color:#c5d3e3;line-height:1.45;margin:8px 0">1) Escolha o plano · 2) Pague pelo link · 3) Toque em <b>Já paguei</b> · 4) O Master (ou Admin) confirma no painel e libera.</p>'+
-      '<button type="button" class="authBtn green" style="width:100%" onclick="try{htRequestPayment()}catch(e){alert(e)}">✅ Já paguei — avisar o Master</button>'+
+    '<div id="htPlanPayHint" style="grid-column:1/-1;display:block;margin-top:6px;padding:14px;border-radius:14px;background:#1a1408;border:1px solid #6d5010">'+
+      '<b style="color:#ffbd3e">Como liberar o acesso</b>'+
+      '<p style="font-size:12px;color:#c5d3e3;line-height:1.45;margin:8px 0">1) Escolha o plano · 2) Pague com o QR, Pix ou link do plano · 3) Toque em <b>Já paguei</b> · 4) O Master/Admin confirma e libera.</p>'+
+      '<button type="button" class="authBtn green" style="width:100%" onclick="try{window.htRequestPayment()}catch(e){alert(e)}">✅ Já paguei — avisar o Master</button>'+
       '<button type="button" class="authBtn ghost" style="width:100%;margin-top:8px" onclick="show(\'paywall\')">Ir para tela de pagamento</button>'+
     '</div>';
+}
+
+function htCopyPlanPix(planId){
+  var key = '';
+  try{
+    var pc = getPlanPayConfig(planId);
+    key = (pc && pc.pixKey) || '';
+  }catch(e){}
+  if(!key){ try{ if(typeof toast==='function') toast('Nenhuma chave Pix neste plano'); }catch(e){} return; }
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(key).then(function(){ if(typeof toast==='function') toast('Chave Pix copiada'); }).catch(function(){ prompt('Copie a chave Pix:', key); });
+    } else {
+      prompt('Copie a chave Pix:', key);
+    }
+  }catch(e){ prompt('Copie a chave Pix:', key); }
+}
+
+function htOpenPlanPayLink(planId){
+  var link = '';
+  try{
+    var pc = getPlanPayConfig(planId);
+    link = (pc && pc.link) || '';
+  }catch(e){}
+  if(!link || link.indexOf('http')!==0){
+    try{ if(typeof toast==='function') toast('Link de pagamento não configurado neste plano'); }catch(e){}
+    return;
+  }
+  try{
+    if(typeof htSetPlan==='function') htSetPlan(planId);
+  }catch(e){}
+  try{ window.open(link, '_blank', 'noopener'); }catch(e){ location.href = link; }
+  try{ if(typeof toast==='function') toast('Abrindo pagamento…'); }catch(e){}
 }
 
 function htShowUpgrade(title,text){
@@ -24663,7 +25908,7 @@ var HT_BADGES=[
   {min:1, emoji:'🥉', name:'Selo Bronze — 1ª semana completa'},
   {min:3, emoji:'🥈', name:'Selo Prata — 3 semanas completas'},
   {min:6, emoji:'🥇', name:'Selo Ouro — 6 semanas completas'},
-  {min:12, emoji:'🏆', name:'Selo Lenda — 12 semanas completas'}
+  {min:12, emoji:'💎', name:'Selo Diamante — 12 semanas completas'}
 ];
 function htCurrentBadge(){
   htEnsureState();
@@ -24915,7 +26160,7 @@ window.htOpenRankingGated=htOpenRankingGated; window.htAnalyzeExams=htAnalyzeExa
 window.htGoToNutritionFromEvo=htGoToNutritionFromEvo; window.htToggleAllergy=htToggleAllergy; window.htSetMealsCount=htSetMealsCount;
 window.htAutoAssembleAll=htAutoAssembleAll; window.htOpenSwap=htOpenSwap; window.htDoSwap=htDoSwap;
 window.htSetPhotoFrequency=htSetPhotoFrequency; window.htHandlePhoto=htHandlePhoto; window.htSavePhotoCycle=htSavePhotoCycle; window.htRedoDraftPhoto=htRedoDraftPhoto; window.htSavePhotoCycle = htSavePhotoCycle;
-window.htRenderPlans=htRenderPlans; window.htRenderPhotoScreen=htRenderPhotoScreen; window.htRenderRanking=htRenderRanking;
+window.htRenderPlans=htRenderPlans; window.htCopyPlanPix=htCopyPlanPix; window.htOpenPlanPayLink=htOpenPlanPayLink; window.htRenderPhotoScreen=htRenderPhotoScreen; window.htRenderRanking=htRenderRanking;
 window.htOpenWeeklyCelebrate=htOpenWeeklyCelebrate; window.htConfirmPostRanking=htConfirmPostRanking; window.htWeekModalAnswer=htWeekModalAnswer;
 
 try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Evolução, imagens e semana completa carregado'); }catch(e){}
@@ -26110,9 +27355,9 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
   window.HT_BADGES = [
     {min:0, emoji:'⬜', name:'Sem selo ainda', tier:'none'},
     {min:1, emoji:'🥉', name:'Bronze — 1 semana completa', tier:'bronze'},
-    {min:2, emoji:'🥈', name:'Prata — 2 semanas completas', tier:'silver'},
-    {min:4, emoji:'🥇', name:'Ouro — 4 semanas completas', tier:'gold'},
-    {min:8, emoji:'🏆', name:'Lenda — 8 semanas completas', tier:'legend'}
+    {min:3, emoji:'🥈', name:'Prata — 3 semanas completas', tier:'silver'},
+    {min:6, emoji:'🥇', name:'Ouro — 6 semanas completas', tier:'gold'},
+    {min:12, emoji:'💎', name:'Diamante — 12 semanas completas', tier:'diamond'}
   ];
 
   window.htCurrentBadge = function(){
@@ -26145,9 +27390,9 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
     }
     var tiers = [
       {min:1, emoji:'🥉', label:'Bronze', need:'1 sem.'},
-      {min:2, emoji:'🥈', label:'Prata', need:'2 sem.'},
-      {min:4, emoji:'🥇', label:'Ouro', need:'4 sem.'},
-      {min:8, emoji:'🏆', label:'Lenda', need:'8 sem.'}
+      {min:3, emoji:'🥈', label:'Prata', need:'3 sem.'},
+      {min:6, emoji:'🥇', label:'Ouro', need:'6 sem.'},
+      {min:12, emoji:'💎', label:'Diamante', need:'12 sem.'}
     ];
     ladder.innerHTML = tiers.map(function(t){
       var on = n >= t.min;
@@ -26157,7 +27402,7 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
         (t.label==='Bronze'&&b.tier==='bronze')||
         (t.label==='Prata'&&b.tier==='silver')||
         (t.label==='Ouro'&&b.tier==='gold')||
-        (t.label==='Lenda'&&b.tier==='legend')
+        (t.label==='Diamante'&&(b.tier==='diamond'||b.tier==='legend'))
       )));
       return '<div style="text-align:center;padding:10px 4px;border-radius:12px;border:1px solid '+(on?'#ffbd3e':'#2b3b55')+';background:'+(on?'linear-gradient(145deg,#1a1408,#0d1a2e)':'#0b1525')+';opacity:'+(on?'1':'.55')+'">'+
         '<div style="font-size:22px">'+t.emoji+'</div>'+
@@ -28022,6 +29267,683 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
   setInterval(function(){ injectRefreshBtn(); fixRankingNote(); }, 3000);
 
   try{ console.log('[HT] Ranking competitivo + Master apaga todas as fotos'); }catch(e){}
+})();
+</script>
+
+
+<script id="htRankingEnhanceV48">
+(function(){
+  'use strict';
+  var CH_KEY = 'htMasterChallengesV1';
+  var PROG_KEY = 'htChallengeProgressV1';
+  var LOG = '[HT RankV48]';
+  function log(){ try{ console.log.apply(console, [LOG].concat([].slice.call(arguments))); }catch(e){} }
+  function toastMsg(m){ try{ if(typeof toast==='function') toast(m); }catch(e){} }
+
+  function isMaster(){
+    try{ if(typeof htIsMasterTester==='function' && htIsMasterTester()) return true; }catch(e){}
+    try{
+      if(typeof getSession==='function'){
+        var s=getSession();
+        if(s && (s.role==='MASTER' || s.alsoMaster || s.isMasterPersonal || s.isAdmin)) return true;
+      }
+    }catch(e){}
+    return false;
+  }
+
+  function loadChallenges(){
+    try{
+      var raw=localStorage.getItem(CH_KEY);
+      if(raw){ var a=JSON.parse(raw); if(Array.isArray(a)) return a; }
+    }catch(e){}
+    return [];
+  }
+  function activeChallenge(){
+    var list=loadChallenges().filter(function(c){ return c && c.active!==false; });
+    if(!list.length) return null;
+    list.sort(function(a,b){ return (b.createdAt||0)-(a.createdAt||0); });
+    return list[0];
+  }
+
+  function loadProgress(){
+    try{
+      var raw=localStorage.getItem(PROG_KEY);
+      if(raw){ var o=JSON.parse(raw); if(o && typeof o==='object') return o; }
+    }catch(e){}
+    return {};
+  }
+  function saveProgress(p){
+    try{ localStorage.setItem(PROG_KEY, JSON.stringify(p||{})); }catch(e){}
+  }
+
+  function userKey(){
+    try{
+      if(typeof state!=='undefined' && state && state.profile){
+        return String(state.profile.email||state.profile.name||'local').toLowerCase();
+      }
+    }catch(e){}
+    try{
+      if(typeof currentUser==='function'){
+        var u=currentUser();
+        if(u) return String(u.email||u.name||'local').toLowerCase();
+      }
+    }catch(e){}
+    return 'local';
+  }
+
+  function weekKey(){
+    try{ if(typeof htV44WeekKey==='function') return htV44WeekKey(); }catch(e){}
+    try{ if(typeof htWeekKey==='function') return htWeekKey(); }catch(e){}
+    var d=new Date();
+    var onejan=new Date(d.getFullYear(),0,1);
+    var week=Math.ceil((((d-onejan)/86400000)+onejan.getDay()+1)/7);
+    return d.getFullYear()+'-W'+week;
+  }
+
+  function weekComplete(){
+    try{ if(typeof htWeekIsComplete==='function') return !!htWeekIsComplete(); }catch(e){}
+    return false;
+  }
+
+  function weeklyLoadMetrics(){
+    try{
+      if(typeof htV44WeeklyMetrics==='function'){
+        var m=htV44WeeklyMetrics();
+        if(m) return m;
+      }
+    }catch(e){}
+    try{
+      if(typeof htWeeklyTotals==='function'){
+        var t=htWeeklyTotals();
+        return {
+          week: weekKey(),
+          exercises: t.exercises||0,
+          load: t.load||0,
+          sets: 0,
+          volume: t.load||0,
+          score: Math.round((t.load||0)*0.9 + (t.exercises||0)*5)
+        };
+      }
+    }catch(e){}
+    // fallback: soma cargas registradas no state.loads da semana atual
+    var load=0, ex=0;
+    try{
+      if(typeof state!=='undefined' && state && state.loads){
+        Object.keys(state.loads).forEach(function(k){
+          var v=Number(state.loads[k])||0;
+          if(v>0){ load+=v; ex++; }
+        });
+      }
+    }catch(e){}
+    return { week: weekKey(), exercises:ex, load:Math.round(load), sets:0, volume:Math.round(load), score: Math.round(load*0.9 + ex*5) };
+  }
+
+  /** Pontuação do ranking: prioriza carga registrada no treino */
+  function computeScore(metrics, challengeDone, weeksDone){
+    var load = Number(metrics && metrics.load)||0;
+    var exercises = Number(metrics && metrics.exercises)||0;
+    var sets = Number(metrics && metrics.sets)||0;
+    // carga pesa mais: cada kg ~ 1pt, exercício e série somam bônus
+    var score = Math.round(load * 1.0 + exercises * 8 + sets * 2);
+    if(challengeDone) score += 150; // bônus por concluir o desafio da semana
+    score += Math.min(200, (Number(weeksDone)||0) * 10); // histórico de semanas
+    return Math.max(0, score);
+  }
+
+  function markChallengeProgress(){
+    var ch = activeChallenge();
+    if(!ch) return null;
+    var m = weeklyLoadMetrics();
+    var done = weekComplete() && (Number(m.load)||0) > 0; // precisa concluir semana COM carga registrada
+    var prog = loadProgress();
+    var uk = userKey();
+    prog[uk] = prog[uk] || {};
+    prog[uk][ch.id] = {
+      challengeId: ch.id,
+      week: m.week,
+      load: m.load,
+      exercises: m.exercises,
+      sets: m.sets,
+      completed: done,
+      updatedAt: Date.now()
+    };
+    saveProgress(prog);
+    return prog[uk][ch.id];
+  }
+
+  function challengeCompleted(){
+    var ch = activeChallenge();
+    if(!ch) return true; // sem desafio ativo, ranking livre (fluxo antigo)
+    var prog = loadProgress();
+    var uk = userKey();
+    var row = prog[uk] && prog[uk][ch.id];
+    if(row && row.completed) return true;
+    // reavalia ao vivo
+    var live = markChallengeProgress();
+    return !!(live && live.completed);
+  }
+
+  function pullCloudChallenges(){
+    try{
+      var fb=window.htFirebase && window.htFirebase.db;
+      if(!fb) return Promise.resolve();
+      return fb.collection('appConfig').doc('rankingChallenges').get().then(function(snap){
+        if(!snap || !snap.exists) return;
+        var d=snap.data()||{};
+        if(Array.isArray(d.list)) localStorage.setItem(CH_KEY, JSON.stringify(d.list));
+      }).catch(function(){});
+    }catch(e){ return Promise.resolve(); }
+  }
+
+  function ensureChallengeBox(){
+    var screen=document.getElementById('rankingScreen');
+    if(!screen) return null;
+    var box=document.getElementById('htWeeklyChallengeBox');
+    if(box) return box;
+    box=document.createElement('div');
+    box.id='htWeeklyChallengeBox';
+    box.style.cssText='margin:10px;padding:14px;border-radius:16px;background:linear-gradient(135deg,#1a1408,#0d1a2e);border:1px solid #ffbd3e66;display:none';
+    var anchor=screen.querySelector('.htBadgeRow') || screen.querySelector('.sectionTitle') || screen.firstChild;
+    if(anchor && anchor.parentNode){
+      anchor.parentNode.insertBefore(box, anchor);
+    } else screen.insertBefore(box, screen.firstChild);
+    return box;
+  }
+
+  function renderChallenge(){
+    var box=ensureChallengeBox();
+    if(!box) return;
+    var ch=activeChallenge();
+    if(!ch){ box.style.display='none'; box.innerHTML=''; return; }
+    var m=weeklyLoadMetrics();
+    var done=challengeCompleted();
+    var weeks=0;
+    try{
+      if(typeof state!=='undefined' && state && state.ranking) weeks=state.ranking.weeksCompleted||0;
+    }catch(e){}
+    var badge=null;
+    try{ if(typeof htCurrentBadge==='function') badge=htCurrentBadge(); }catch(e){}
+    box.style.display='block';
+    box.innerHTML=
+      '<div style="font-size:11px;font-weight:900;color:#ffbd3e;letter-spacing:.4px;text-transform:uppercase">🎯 Desafio semanal do Master</div>'+
+      '<div style="font-size:16px;font-weight:950;color:#fff;margin-top:6px">'+(ch.title||'Desafio')+'</div>'+
+      (ch.week ? '<div style="font-size:11px;color:#56b5ff;margin-top:4px">📅 '+ch.week+'</div>' : '')+
+      '<div style="font-size:12px;color:#c5d3e3;line-height:1.45;margin-top:8px">'+(ch.text||'')+'</div>'+
+      '<div style="margin-top:10px;padding:10px;border-radius:12px;background:#050c16;border:1px solid #315075;font-size:12px;color:#c5d3e3;line-height:1.45">'+
+        '<b style="color:#fff">Para entrar no ranking:</b> conclua a semana na aba <b>Treino</b> registrando a <b>carga (kg)</b> de cada exercício.<br/>'+
+        'Carga da semana: <b style="color:#56b5ff">'+(m.load||0)+' kg</b> · Exercícios: <b>'+(m.exercises||0)+'</b><br/>'+
+        'Status: '+(done
+          ? '<b style="color:#20e083">✅ Desafio concluído — pode postar no ranking</b>'
+          : '<b style="color:#ffbd3e">🔒 Desafio em andamento — complete treinos com carga</b>')+
+        (badge ? '<br/>Seu selo atual: '+badge.emoji+' <b>'+badge.name+'</b> ('+weeks+' semana(s))' : '')+
+      '</div>';
+  }
+
+  function ensureMasterResetBtn(){
+    var screen=document.getElementById('rankingScreen');
+    if(!screen) return;
+    var btn=document.getElementById('htMasterResetRankPhoto');
+    if(!isMaster()){
+      if(btn) btn.style.display='none';
+      return;
+    }
+    if(!btn){
+      btn=document.createElement('button');
+      btn.id='htMasterResetRankPhoto';
+      btn.type='button';
+      btn.className='htBtn';
+      btn.style.cssText='width:calc(100% - 20px);margin:8px 10px 4px;padding:12px;border-radius:12px;border:1px solid #ffbd3e;background:linear-gradient(135deg,#1a1408,#0d1a2e);color:#ffbd3e;font-weight:900;font-size:12px';
+      btn.textContent='🛠️ Master: resetar minha foto do ranking';
+      var top10=document.getElementById('htRankTop10');
+      if(top10 && top10.parentNode) top10.parentNode.insertBefore(btn, top10);
+      else screen.appendChild(btn);
+      btn.onclick=function(ev){
+        if(ev){ try{ev.preventDefault();ev.stopPropagation();}catch(e){} }
+        if(typeof window.htMasterResetRankingPhoto==='function') window.htMasterResetRankingPhoto();
+        return false;
+      };
+    }
+    btn.style.display='block';
+  }
+
+  // keep previous master reset implementation available
+  if(typeof window.htMasterResetRankingPhoto!=='function'){
+    window.htMasterResetRankingPhoto=function(){
+      if(!isMaster()){ toastMsg('Só o Master pode resetar a foto do ranking.'); return; }
+      try{ window.sharePhotoDataUrl=null; }catch(e){}
+      try{ localStorage.removeItem('htShareCamPhotoV1'); }catch(e){}
+      try{
+        if(typeof state!=='undefined' && state && state.ranking){
+          state.ranking.list=(state.ranking.list||[]).filter(function(x){ return !x.isMe; });
+          if(typeof save==='function') save();
+        }
+      }catch(e){}
+      try{ if(typeof htRenderRanking==='function') htRenderRanking(); }catch(e){}
+      toastMsg('Foto do ranking resetada (Master)');
+    };
+  }
+
+  function sortByScoreThenLoad(list){
+    return (list||[]).slice().sort(function(a,b){
+      var sc=(Number(b.score)||0)-(Number(a.score)||0);
+      if(sc!==0) return sc;
+      var ld=(Number(b.load)||0)-(Number(a.load)||0);
+      if(ld!==0) return ld;
+      return (Number(b.exercises)||0)-(Number(a.exercises)||0);
+    }).slice(0,10);
+  }
+
+  function publicSealHtml(entry, idx){
+    var badgeEmoji = entry.badgeEmoji || '🏅';
+    var badgeName = entry.badgeName || 'No ranking';
+    var name = entry.name || 'Atleta';
+    var load = Number(entry.load||0);
+    var exercises = Number(entry.exercises||0);
+    var score = Number(entry.score||0);
+    var me = entry.isMe ? ' isMe' : '';
+    var photo = entry.photo
+      ? '<img src="'+entry.photo+'" alt="">'
+      : '<div style="width:46px;height:46px;border-radius:11px;background:#0b1525;display:flex;align-items:center;justify-content:center;font-size:20px">'+badgeEmoji+'</div>';
+    return '<div class="htTop10Row'+me+'">'+
+      '<div class="pos">#'+(idx+1)+'</div>'+photo+
+      '<div class="info">'+
+        '<b>'+String(name).replace(/</g,'')+'</b>'+
+        '<div style="display:inline-flex;align-items:center;gap:4px;margin-top:3px;padding:3px 8px;border-radius:999px;background:#1a1408;border:1px solid #ffbd3e55;font-size:10px;font-weight:900;color:#ffbd3e">'+
+          badgeEmoji+' '+String(badgeName).replace(/</g,'')+' · público'+
+        '</div>'+
+        '<small style="display:block;margin-top:4px">'+
+          exercises+' exercícios • <b style="color:#56b5ff">'+load.toLocaleString('pt-BR')+' kg</b> • '+
+          '<span class="htRankScore" style="color:#20e083;font-weight:900">'+score+' pts</span>'+
+        '</small>'+
+      '</div></div>';
+  }
+
+  function enhanceRender(){
+    markChallengeProgress();
+    renderChallenge();
+    ensureMasterResetBtn();
+    var box=document.getElementById('htRankTop10');
+    if(!box) return;
+    var list=[];
+    try{
+      if(typeof state!=='undefined' && state && state.ranking && state.ranking.list) list=state.ranking.list;
+    }catch(e){}
+    var sorted=sortByScoreThenLoad(list);
+    var rules='<div class="htRankRules" style="margin-bottom:10px">'+
+      '<b>Top 10 público</b> — posição por <b>pontuação</b> (carga registrada no treino + desafio concluído + semanas).<br/>'+
+      'Selos por semanas concluídas: 🥉 Bronze (1) · 🥈 Prata (3) · 🥇 Ouro (6) · 💎 Diamante (12).'+
+      '</div>';
+    if(!sorted.length){
+      if(box.innerHTML.indexOf('htRankRules')<0){
+        box.innerHTML=rules+'<small style="color:#9fb0c5">Ninguém no ranking ainda. Conclua o desafio da semana registrando cargas no treino e poste sua foto.</small>';
+      } else {
+        try{
+          var r=box.querySelector('.htRankRules');
+          if(r) r.innerHTML='<b>Top 10 público</b> — pontuação por carga no treino + desafio. Selos: 🥉 Bronze · 🥈 Prata · 🥇 Ouro · 💎 Diamante.';
+        }catch(e){}
+      }
+      return;
+    }
+    box.innerHTML=rules+sorted.map(function(x,i){ return publicSealHtml(x,i); }).join('');
+  }
+
+  function patchRender(){
+    if(typeof window.htRenderRanking!=='function' || window.htRenderRanking.__htV48) return;
+    var prev=window.htRenderRanking;
+    window.htRenderRanking=function(){
+      var ret;
+      try{ ret=prev.apply(this, arguments); }catch(e){}
+      try{ enhanceRender(); }catch(e2){}
+      return ret;
+    };
+    window.htRenderRanking.__htV48=true;
+  }
+
+  /** Só entra no ranking se concluiu o desafio (semana + cargas) quando há desafio ativo */
+  function patchPost(){
+    if(typeof window.htConfirmPostRanking!=='function' || window.htConfirmPostRanking.__htV48) return;
+    var prev=window.htConfirmPostRanking;
+    window.htConfirmPostRanking=function(){
+      markChallengeProgress();
+      var ch=activeChallenge();
+      if(ch && !challengeCompleted()){
+        toastMsg('Conclua o desafio da semana no Treino (com carga registrada) para entrar no ranking.');
+        try{ show('workout'); }catch(e){}
+        return;
+      }
+      // injeta score baseado em carga antes do publish
+      try{
+        var m=weeklyLoadMetrics();
+        var weeks=0;
+        try{ if(state && state.ranking) weeks=state.ranking.weeksCompleted||0; }catch(e){}
+        var sc=computeScore(m, true, weeks);
+        // guarda para o builder usar
+        window.__htRankScoreOverride=sc;
+        window.__htRankLoadOverride=m.load||0;
+        window.__htRankExOverride=m.exercises||0;
+      }catch(e){}
+      var ret=prev.apply(this, arguments);
+      try{
+        if(typeof state!=='undefined' && state && state.ranking && state.ranking.list && state.ranking.list.length){
+          var last=state.ranking.list[state.ranking.list.length-1];
+          if(last){
+            last.public=true;
+            if(window.__htRankScoreOverride!=null) last.score=window.__htRankScoreOverride;
+            if(window.__htRankLoadOverride!=null) last.load=window.__htRankLoadOverride;
+            if(window.__htRankExOverride!=null) last.exercises=window.__htRankExOverride;
+            try{
+              if(typeof htCurrentBadge==='function'){
+                var b=htCurrentBadge();
+                last.badgeEmoji=b.emoji; last.badgeName=b.name;
+              }
+            }catch(e){}
+            // republica na nuvem com score correto
+            try{
+              if(typeof htV44PublishCloud==='function') htV44PublishCloud(last);
+            }catch(e){}
+          }
+          try{ if(typeof save==='function') save(); }catch(e){}
+        }
+      }catch(e){}
+      setTimeout(function(){ try{ if(typeof htRenderRanking==='function') htRenderRanking(); }catch(e){} }, 200);
+      return ret;
+    };
+    window.htConfirmPostRanking.__htV48=true;
+  }
+
+  /** Ao concluir exercício, atualiza progresso do desafio */
+  function patchComplete(){
+    if(typeof window.completeCurrent!=='function' || window.completeCurrent.__htV48) return;
+    var prev=window.completeCurrent;
+    window.completeCurrent=function(){
+      var ret=prev.apply(this, arguments);
+      try{ markChallengeProgress(); }catch(e){}
+      return ret;
+    };
+    window.completeCurrent.__htV48=true;
+  }
+
+  /** Gate do botão de ranking quando há desafio */
+  function patchOpenRank(){
+    if(typeof window.htOpenRankingGated!=='function' || window.htOpenRankingGated.__htV48) return;
+    var prev=window.htOpenRankingGated;
+    window.htOpenRankingGated=function(){
+      markChallengeProgress();
+      // sempre permite VER o ranking; postar é que exige desafio
+      try{
+        if(typeof htRenderRanking==='function') htRenderRanking();
+        if(typeof show==='function') show('rankingScreen');
+        return;
+      }catch(e){}
+      return prev.apply(this, arguments);
+    };
+    window.htOpenRankingGated.__htV48=true;
+  }
+
+  function boot(){
+    patchRender();
+    patchPost();
+    patchComplete();
+    patchOpenRank();
+    pullCloudChallenges().then(function(){ try{ renderChallenge(); }catch(e){} });
+    ensureMasterResetBtn();
+  }
+
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot,300); });
+  else setTimeout(boot,300);
+  setInterval(function(){ try{ patchRender(); patchPost(); patchComplete(); patchOpenRank(); ensureMasterResetBtn(); }catch(e){} }, 2000);
+
+  if(typeof window.show==='function' && !window.show.__htV48Rank){
+    var prevShow=window.show;
+    window.show=function(id){
+      var r=prevShow.apply(this, arguments);
+      if(id==='rankingScreen'){
+        pullCloudChallenges().then(function(){
+          setTimeout(function(){ try{ if(typeof htRenderRanking==='function') htRenderRanking(); enhanceRender(); }catch(e){} }, 60);
+        });
+      }
+      if(id==='workout' || id==='detail'){
+        try{ markChallengeProgress(); }catch(e){}
+      }
+      return r;
+    };
+    window.show.__htV48Rank=true;
+  }
+
+  log('Challenge+load score ranking active (bronze/prata/ouro/diamante)');
+})();
+</script>
+
+
+<script id="htAccessLockV49">
+(function(){
+  'use strict';
+  function isAppScreen(id){
+    var blocked = {
+      home:1, workout:1, detail:1, cardio:1, nutrition:1, profile:1,
+      evolution:1, rankingScreen:1, htPlans:1, trainGoal:1
+    };
+    return !!blocked[id];
+  }
+  function allowedWhenExpired(id){
+    return id==='paywall' || id==='authWelcome' || id==='authRegister' || id==='authAdminLogin' || id==='admin';
+  }
+  function userExpired(){
+    try{
+      if(typeof isAdminSession==='function' && isAdminSession()) return false;
+    }catch(e){}
+    try{
+      if(typeof currentUser!=='function' || typeof getAccessStatus!=='function') return false;
+      var u=currentUser();
+      if(!u) return false;
+      var st=getAccessStatus(u);
+      return !!(st && !st.ok);
+    }catch(e){ return false; }
+  }
+  function forcePaywall(msg){
+    try{
+      var m=document.getElementById('paywallMsg');
+      if(m && msg) m.textContent=msg;
+      if(typeof applyPayConfigToUI==='function') applyPayConfigToUI();
+      if(typeof show==='function'){
+        // chama original se existir, senão ativa tela direto
+        show('paywall');
+      } else {
+        document.querySelectorAll('.screen').forEach(function(x){ x.classList.remove('active'); });
+        var p=document.getElementById('paywall');
+        if(p) p.classList.add('active');
+        var bottom=document.getElementById('bottom');
+        if(bottom) bottom.style.display='none';
+      }
+    }catch(e){}
+  }
+
+  // Patch show to always lock expired users out of app
+  function patchShow(){
+    if(typeof window.show!=='function' || window.show.__htV49Lock) return;
+    var prev=window.show;
+    window.show=function(id){
+      try{
+        if(userExpired() && isAppScreen(id) && !allowedWhenExpired(id)){
+          var u=null, st=null;
+          try{ u=currentUser(); st=getAccessStatus(u); }catch(e){}
+          forcePaywall((st && st.msg) || 'Seu acesso expirou. Escolha um plano e assine para continuar.');
+          return;
+        }
+      }catch(e){}
+      var ret=prev.apply(this, arguments);
+      try{
+        if(id==='paywall'){
+          setTimeout(function(){
+            try{ if(typeof applyPayConfigToUI==='function') applyPayConfigToUI(); }catch(e){}
+          }, 40);
+        }
+      }catch(e){}
+      return ret;
+    };
+    window.show.__htV49Lock=true;
+  }
+
+  // Also intercept bottom nav clicks
+  function patchNav(){
+    try{
+      document.querySelectorAll('.nav, .bottomNav .nav, #bottom .nav').forEach(function(btn){
+        if(btn.__htV49) return;
+        btn.__htV49=true;
+        btn.addEventListener('click', function(ev){
+          if(!userExpired()) return;
+          try{
+            if(ev){ ev.preventDefault(); ev.stopPropagation(); }
+          }catch(e){}
+          forcePaywall('Seu acesso expirou. Assine para continuar usando o app.');
+          return false;
+        }, true);
+      });
+    }catch(e){}
+  }
+
+  // Ensure Já paguei works from Meus planos even if onclick attribute fails
+  function patchPlansBtn(){
+    try{
+      var box=document.getElementById('htPlanPayHint');
+      if(!box) return;
+      var btns=box.querySelectorAll('button');
+      btns.forEach(function(b){
+        var t=(b.textContent||'');
+        if(t.indexOf('Já paguei')>=0 && !b.__htV49Pay){
+          b.__htV49Pay=true;
+          b.addEventListener('click', function(ev){
+            try{ if(ev){ ev.preventDefault(); ev.stopPropagation(); } }catch(e){}
+            try{ if(typeof htRequestPayment==='function') htRequestPayment(); }
+            catch(err){ try{ toast('Erro ao avisar pagamento'); }catch(e2){} }
+            return false;
+          }, true);
+        }
+      });
+    }catch(e){}
+  }
+
+  // Free plan selection always on paywall
+  function ensurePlanPickerLive(){
+    try{
+      if(typeof applyPayConfigToUI==='function') applyPayConfigToUI();
+    }catch(e){}
+  }
+
+  // Sync desired plan into auth user on change
+  function patchSetPlan(){
+    if(typeof window.htSetPlan!=='function' || window.htSetPlan.__htV49) return;
+    var prev=window.htSetPlan;
+    window.htSetPlan=function(tier){
+      var ret=prev.apply(this, arguments);
+      try{
+        tier=String(tier||'basico');
+        if(typeof htNormalizePlanId==='function') tier=htNormalizePlanId(tier);
+        if(typeof currentUser==='function' && typeof authLoad==='function' && typeof authSave==='function'){
+          var u=currentUser();
+          if(u&&u.email){
+            var db=authLoad();
+            if(db&&db.users&&db.users[u.email]){
+              db.users[u.email].desiredPlan=tier;
+              db.users[u.email].plan=tier;
+              authSave(db);
+            }
+          }
+        }
+        if(typeof applyPayConfigToUI==='function') applyPayConfigToUI();
+      }catch(e){}
+      return ret;
+    };
+    window.htSetPlan.__htV49=true;
+  }
+
+  function boot(){
+    patchShow();
+    patchSetPlan();
+    patchNav();
+    patchPlansBtn();
+    // se já está logado e expirado, trava
+    try{
+      if(userExpired()){
+        var active=document.querySelector('.screen.active');
+        var id=active?active.id:'';
+        if(isAppScreen(id)) forcePaywall('Seu acesso expirou. Escolha um plano e assine para continuar.');
+      }
+    }catch(e){}
+  }
+
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot,200); });
+  else setTimeout(boot,200);
+  setInterval(function(){
+    try{
+      patchShow(); patchSetPlan(); patchNav(); patchPlansBtn();
+      if(userExpired()){
+        var active=document.querySelector('.screen.active');
+        var id=active?active.id:'';
+        if(id && isAppScreen(id)) forcePaywall(null);
+      }
+    }catch(e){}
+  }, 2500);
+
+  // quando paywall abrir, garante picker de planos
+  document.addEventListener('click', function(ev){
+    try{
+      var t=ev.target;
+      if(!t) return;
+      // clique nos botões de plano do paywall já usa htSelectPayPlan
+      if(t.closest && t.closest('#payPlanPicker')){
+        setTimeout(ensurePlanPickerLive, 30);
+      }
+    }catch(e){}
+  }, true);
+
+  console.log('[HT V49] Access lock + Já paguei harden + plan picker sync');
+})();
+</script>
+
+
+<script id="htPayButtonsFixV50">
+(function(){
+  function bind(){
+    try{
+      var paywall=document.getElementById('paywall');
+      if(paywall && !paywall.__htPayBind){
+        paywall.__htPayBind=true;
+        paywall.addEventListener('click', function(ev){
+          var t=ev.target;
+          if(!t) return;
+          var btn=t.closest ? t.closest('[data-plan]') : null;
+          if(btn && btn.getAttribute('data-plan')){
+            try{ ev.preventDefault(); }catch(e){}
+            if(window.htSelectPayPlan) window.htSelectPayPlan(btn.getAttribute('data-plan'));
+            return;
+          }
+          var txt=(t.textContent||'');
+          if(txt.indexOf('Já paguei')>=0 || (t.closest && t.closest('button') && (t.closest('button').textContent||'').indexOf('Já paguei')>=0)){
+            try{ ev.preventDefault(); ev.stopPropagation(); }catch(e){}
+            try{ window.htRequestPayment && window.htRequestPayment(); }catch(err){ alert(err); }
+          }
+        }, true);
+      }
+      var plans=document.getElementById('htPlans');
+      if(plans && !plans.__htPayBind){
+        plans.__htPayBind=true;
+        plans.addEventListener('click', function(ev){
+          var t=ev.target;
+          if(!t) return;
+          var b=t.closest ? t.closest('button') : null;
+          var txt=b ? (b.textContent||'') : (t.textContent||'');
+          if(txt.indexOf('Já paguei')>=0){
+            try{ ev.preventDefault(); ev.stopPropagation(); }catch(e){}
+            try{ window.htRequestPayment && window.htRequestPayment(); }catch(err){ alert(err); }
+          }
+        }, true);
+      }
+    }catch(e){}
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(bind,200); });
+  else setTimeout(bind,200);
+  setInterval(bind, 2000);
 })();
 </script>
 
