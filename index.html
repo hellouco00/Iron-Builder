@@ -1789,7 +1789,7 @@ body:has(#authWelcome.active) #bottom {
 </section>
 <nav class="bottom" id="bottom" style="display:none">
 <button class="nav active" data-screen="home" onclick="show('home')"><i>⌂</i>Início</button>
-<button class="nav" data-screen="workout" onclick="openDay(0)"><i>🏋️</i>Treino</button>
+<button class="nav" data-screen="workout" type="button" onclick="try{if(window.htUiUnlock)htUiUnlock()}catch(e){};try{openDay(typeof state!=='undefined'&&state&&state.dayOpened!=null?state.dayOpened:0)}catch(e2){show('workout')}"><i>🏋️</i>Treino</button>
 <button class="nav" data-screen="cardio" onclick="show('cardio')"><i>🏃</i>Cardio</button>
 <button class="nav" data-screen="nutrition" onclick="show('nutrition')"><i>🥗</i>Nutrição</button>
 <button class="nav" data-screen="profile" onclick="openProfile()"><i>👤</i>Perfil</button>
@@ -2388,17 +2388,48 @@ const FOOD_DATA={
 const MEAL_LABELS={breakfast:'Café da manhã',lunch:'Almoço',snack:'Lanche',dinner:'Jantar'};
 let mealType='breakfast';
 function calcNutritionTargets(){
+ /* Mifflin-St Jeor + macros consistentes com a meta calórica.
+    Altura: aceita cm (172) ou metros (1.72) — normaliza para cm. */
  const p=state.profile||{age:34,weight:75,height:172,gender:'masculino'};
- const age=Number(p.age)||34, weight=Number(p.weight)||75, height=Number(p.height)||172;
- const sex=p.gender==='feminino'?-161:5;
- const bmr=10*weight+6.25*height-5*age+sex;
- const maintenance=Math.round(bmr*1.5);
+ const age=Math.max(10, Math.min(100, Number(p.age)||34));
+ let weight=Number(p.weight)||75;
+ if(weight>300 || weight<30) weight=75;
+ let height=Number(p.height)||172;
+ /* BUG FIX: se o usuário digitou metros (ex: 1.72), converte para cm */
+ if(height>0 && height<3) height=height*100;
+ if(height<100 || height>250) height=172;
+ const sex=(String(p.gender||'').toLowerCase().indexOf('fem')>=0)?-161:5;
+ const bmr=Math.round(10*weight + 6.25*height - 5*age + sex);
+ /* Gasto diário estimado: atividade moderada (1.55) */
+ const maintenance=Math.round(bmr*1.55);
  let kcal=maintenance, proteinKg=1.6;
- if(nutritionGoal==='fat'){kcal=Math.max(1200,maintenance-400);proteinKg=2.0}
- if(nutritionGoal==='mass'){kcal=maintenance+250;proteinKg=2.0}
- const protein=Math.round(proteinKg*weight), fat=Math.round(weight*0.8);
- let carbs=Math.round((kcal-(protein*4+fat*9))/4); if(carbs<80)carbs=80;
- return {kcal,protein,carbs,fat,maintenance,water:Math.min(4,Math.max(1.5,weight*.035+(nutritionGoal==='well'?0:.3)))};
+ const goal=(typeof nutritionGoal!=='undefined' && nutritionGoal) ? nutritionGoal : ((state&&state.nutrition&&state.nutrition.goal)||'well');
+ if(goal==='fat'){ kcal=Math.max(Math.round(bmr*1.2), maintenance-400); proteinKg=2.0; }
+ if(goal==='mass'){ kcal=maintenance+250; proteinKg=2.0; }
+ let protein=Math.round(proteinKg*weight);
+ let fat=Math.round(weight*0.8);
+ /* Macros DEVEM fechar com a meta calórica (não forçar 80g de carbo se estoura a conta) */
+ let carbs=Math.round((kcal - (protein*4 + fat*9))/4);
+ if(carbs<40){
+   fat=Math.max(Math.round(weight*0.6), Math.round((kcal - protein*4 - 40*4)/9));
+   if(fat<20) fat=20;
+   carbs=Math.round((kcal - (protein*4 + fat*9))/4);
+   if(carbs<0) carbs=0;
+ }
+ const macroKcal=protein*4 + carbs*4 + fat*9;
+ return {
+   kcal: Math.round(kcal),
+   protein: protein,
+   carbs: carbs,
+   fat: fat,
+   maintenance: maintenance,
+   bmr: bmr,
+   tdee: maintenance,
+   surplus: goal==='mass' ? Math.max(0, Math.round(kcal-maintenance)) : 0,
+   deficit: goal==='fat' ? Math.max(0, Math.round(maintenance-kcal)) : 0,
+   macroKcal: macroKcal,
+   water: Math.min(4, Math.max(1.5, weight*0.035 + (goal==='well'?0:0.3)))
+ };
 }
 function getSelectedFoods(){return state.nutrition?.foods||{breakfast:{},lunch:{},snack:{},dinner:{}}}
 function getMealTotals(type){
@@ -2427,13 +2458,54 @@ function renderRoutine(){
  box.innerHTML=['breakfast','lunch','snack','dinner'].map(type=>{const x=getMealTotals(type);return `<div class="routineRow"><div class="routineTime">${times[type]}</div><div class="routineMeal"><b>${MEAL_LABELS[type]}</b><small>${x.count?Math.round(x.k)+' kcal selecionadas':'Escolha os alimentos acima'}</small></div><div class="routineKcal">${x.count?Math.round(x.k)+' kcal':'—'}</div></div>`}).join('');
 }
 function renderNutrition(){
- const p=state.profile||{name:'Atleta',age:34,height:172,weight:75,gender:'masculino'};document.getElementById('nutriHelloName').textContent=(p.name||'Atleta').split(' ')[0];document.getElementById('nutriUserName').textContent=p.name||'Atleta';document.getElementById('nutriUserMeta').textContent=`${p.age||'—'} anos • ${((p.height||172)/100).toFixed(2).replace('.',',')} m • ${p.weight||75} kg`;
- const t=calcNutritionTargets();document.getElementById('nutriKcal').textContent=t.kcal+' kcal';document.getElementById('nutriProtein').textContent=t.protein+'g';document.getElementById('nutriCarbs').textContent=t.carbs+'g';document.getElementById('nutriFat').textContent=t.fat+'g';
- const labels={fat:'PERDA DE GORDURA',mass:'GANHO DE MASSA',well:'BEM-ESTAR'};document.getElementById('nutriGoalPill').textContent=labels[nutritionGoal];document.getElementById('selectedGoal').textContent='✓ Objetivo selecionado: '+labels[nutritionGoal];['fat','mass','well'].forEach(g=>document.getElementById('goal'+(g==='fat'?'Fat':g==='mass'?'Mass':'Well')).classList.toggle('active',nutritionGoal===g));
- const total=Number(state.nutrition?.waterConsumed)||0,liters=total/1000,target=t.water;document.getElementById('waterTotal').textContent=liters.toFixed(1).replace('.',',')+' / '+target.toFixed(1).replace('.',',')+' L';document.getElementById('waterFill').style.width=Math.min(100,total/(target*1000)*100)+'%';document.getElementById('waterText').textContent=total>=target*1000?'Meta diária atingida! 💧':'Faltam '+Math.max(0,target-liters).toFixed(1).replace('.',',')+' L • estimativa pelo seu peso e objetivo.';
+ const p=state.profile||{name:'Atleta',age:34,height:172,weight:75,gender:'masculino'};
+ let hShow=Number(p.height)||172; if(hShow>0 && hShow<3) hShow=hShow*100;
+ document.getElementById('nutriHelloName').textContent=(p.name||'Atleta').split(' ')[0];
+ document.getElementById('nutriUserName').textContent=p.name||'Atleta';
+ document.getElementById('nutriUserMeta').textContent=`${p.age||'—'} anos • ${(hShow/100).toFixed(2).replace('.',',')} m • ${p.weight||75} kg`;
+ const t=calcNutritionTargets();
+ document.getElementById('nutriKcal').textContent=t.kcal+' kcal';
+ document.getElementById('nutriProtein').textContent=t.protein+'g';
+ document.getElementById('nutriCarbs').textContent=t.carbs+'g';
+ document.getElementById('nutriFat').textContent=t.fat+'g';
+ const labels={fat:'PERDA DE GORDURA',mass:'GANHO DE MASSA',well:'BEM-ESTAR'};
+ const goalNow=(typeof nutritionGoal!=='undefined'&&nutritionGoal)?nutritionGoal:((state&&state.nutrition&&state.nutrition.goal)||'well');
+ document.getElementById('nutriGoalPill').textContent=labels[goalNow]||labels.well;
+ document.getElementById('selectedGoal').textContent='✓ Objetivo selecionado: '+(labels[goalNow]||labels.well);
+ ['fat','mass','well'].forEach(g=>document.getElementById('goal'+(g==='fat'?'Fat':g==='mass'?'Mass':'Well')).classList.toggle('active',goalNow===g));
+ const total=Number(state.nutrition?.waterConsumed)||0,liters=total/1000,target=t.water;
+ document.getElementById('waterTotal').textContent=liters.toFixed(1).replace('.',',')+' / '+target.toFixed(1).replace('.',',')+' L';
+ document.getElementById('waterFill').style.width=Math.min(100,total/(target*1000)*100)+'%';
+ document.getElementById('waterText').textContent=total>=target*1000?'Meta diária atingida! 💧':'Faltam '+Math.max(0,target-liters).toFixed(1).replace('.',',')+' L • estimativa pelo seu peso e objetivo.';
  const daily=getDailyFoodTotals(), diff=Math.round(daily.k-t.kcal), kgWeek=Math.abs(diff)*7/7700, direction=diff<0?'perda':diff>0?'ganho':'manutenção';
- const dailyEl=document.getElementById('dailyFoodSummary');if(dailyEl)dailyEl.innerHTML=`<div><b>${Math.round(daily.k)} kcal</b><span>selecionadas no dia</span></div><div><b>${diff>0?'+':''}${diff} kcal</b><span>vs. meta de ${t.kcal} kcal</span></div><div><b>${direction==='manutenção'?'≈ 0':(direction==='perda'?'−':'＋')+kgWeek.toFixed(2).replace('.',',')+' kg/semana'}</b><span>estimativa teórica</span></div>`;
- const macroEl=document.getElementById('dailyMacroSummary');if(macroEl)macroEl.textContent=`P ${Math.round(daily.p)}g • C ${Math.round(daily.c)}g • G ${Math.round(daily.f)}g`;
+ const dailyEl=document.getElementById('dailyFoodSummary');
+ if(dailyEl)dailyEl.innerHTML=`<div><b>${Math.round(daily.k)} kcal</b><span>selecionadas no dia</span></div><div><b>${diff>0?'+':''}${diff} kcal</b><span>vs. meta de ${t.kcal} kcal</span></div><div><b>${direction==='manutenção'?'≈ 0':(direction==='perda'?'−':'＋')+kgWeek.toFixed(2).replace('.',',')+' kg/semana'}</b><span>estimativa teórica</span></div>`;
+ const macroEl=document.getElementById('dailyMacroSummary');
+ if(macroEl)macroEl.textContent=`P ${Math.round(daily.p)}g • C ${Math.round(daily.c)}g • G ${Math.round(daily.f)}g`;
+ /* Card de metabolismo + checagem macros = kcal */
+ try{
+   var host=document.querySelector('.nutriTargets');
+   if(host){
+     var box=document.getElementById('htNutriMetaBox');
+     if(!box){ box=document.createElement('div'); box.id='htNutriMetaBox'; host.appendChild(box); }
+     box.style.cssText='margin-top:10px;padding:10px;border-radius:12px;background:#050c16;border:1px solid #29405d;font-size:11px;line-height:1.5;color:#c5d3e3';
+     var goalLabel=goalNow==='mass'?'Ganho de massa (superávit)':goalNow==='fat'?'Perda de gordura (déficit)':'Bem-estar (manutenção)';
+     var extra=goalNow==='mass'
+       ?('Superávit: <b style="color:#20e083">+'+(t.surplus||250)+' kcal</b> acima do gasto diário.')
+       :(goalNow==='fat'
+         ?('Déficit: <b style="color:#ffbd3e">−'+(t.deficit||400)+' kcal</b> em relação ao gasto diário.')
+         :'Meta alinhada ao gasto diário estimado.');
+     var mk=t.macroKcal!=null?t.macroKcal:(t.protein*4+t.carbs*4+t.fat*9);
+     box.innerHTML=
+       '<div style="font-weight:900;color:#56b5ff;margin-bottom:6px">📊 Metabolismo e conferência</div>'+
+       '<div>TMB (basal): <b style="color:#fff">'+(t.bmr||'—')+' kcal</b></div>'+
+       '<div>Gasto diário estimado: <b style="color:#fff">'+(t.tdee||t.maintenance||'—')+' kcal</b> <span style="color:#8ea0b8">(×1,55 moderado)</span></div>'+
+       '<div>Meta do objetivo: <b style="color:#ffbd3e">'+t.kcal+' kcal</b> · '+goalLabel+'</div>'+
+       '<div style="margin-top:4px">'+extra+'</div>'+
+       '<div style="margin-top:6px;padding-top:6px;border-top:1px solid #243650">Macros: P '+t.protein+'g ×4 + C '+t.carbs+'g ×4 + G '+t.fat+'g ×9 = <b style="color:#20e083">'+mk+' kcal</b> (fecha com a meta)</div>'+
+       '<div style="margin-top:6px;font-size:9px;color:#71839a">TMB Mifflin-St Jeor. Altura em cm (ou metros convertidos). Ajuste perfil se os números mudarem.</div>';
+   }
+ }catch(eMeta){}
  renderMealOptions();renderRoutine();
 }
 
@@ -2831,9 +2903,23 @@ function doRegister(){
   };
   authSave(db);
   setSession({email});
-  ['name','age','weight','height','gender'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  /* Perfil em branco no 1º acesso — a pessoa preenche e sincroniza */
+  try{
+    if(typeof state!=='undefined' && state){
+      state.profile = null;
+      if(typeof save==='function') save();
+    }
+  }catch(eState){}
+  ['name','age','weight','height','gender','pname','page','pweight','pheight'].forEach(function(id){
+    var el=document.getElementById(id);
+    if(el) el.value='';
+  });
+  try{
+    var g=document.getElementById('pgender')||document.getElementById('gender');
+    if(g) g.value='masculino';
+  }catch(eG){}
   show('profile');
-  toast(invite ? 'Conta criada e vinculada à academia. Complete seus dados.' : 'Conta criada! Complete seus dados. Se sua academia usa o app, peça o cadastro oficial ao admin.');
+  toast(invite ? 'Conta criada e vinculada à academia. Complete seus dados.' : 'Conta criada! Complete nome, idade, peso e altura.');
 }
 
 function doLogin(){
@@ -2963,12 +3049,16 @@ function saveProfile(){
   var name=(nameEl&&nameEl.value||'').trim();
   var age=+(ageEl&&ageEl.value||0), weight=+(wEl&&wEl.value||0), height=+(hEl&&hEl.value||0);
   var gender=(gEl&&gEl.value)||'masculino';
+  /* Normaliza altura: se digitou metros (1.72), grava em cm (172) */
+  if(height>0 && height<3) height=Math.round(height*100);
   const sess = getSession();
   if(!sess || !sess.email){ show('authWelcome'); return; }
   var email=String(sess.email).toLowerCase();
   if(name && name.toLowerCase()===email) name='';
   if(name && name.indexOf('@')>=0) name='';
   if(!name||!age||!weight||!height||!gender){ showAuthError('setupError','Preencha todos os campos.'); toast('Preencha todos os campos.'); return; }
+  if(height<100 || height>250){ showAuthError('setupError','Altura inválida. Use cm (ex: 172) ou metros (ex: 1.72).'); toast('Altura inválida. Ex: 172 cm'); return; }
+  if(weight<30 || weight>300){ showAuthError('setupError','Peso inválido (kg).'); toast('Peso inválido'); return; }
   const db = authLoad();
   const u = db.users[email] || db.users[sess.email];
   if(!u){ show('authWelcome'); return; }
@@ -3516,7 +3606,14 @@ function openProfile(){
    if(nm && em && nm.toLowerCase()===em) nm="";
    if(nm && nm.indexOf("@")>=0) nm="";
  }catch(e){}
- const vals={pname:nm,page:p.age||"",pweight:p.weight||"",pheight:p.height||"",pgender:p.gender||"masculino"};
+ /* Só preenche o que a pessoa já salvou — sem defaults inventados de peso/idade */
+ const vals={
+   pname:nm||"",
+   page:(p.age!=null&&p.age!==""?p.age:""),
+   pweight:(p.weight!=null&&p.weight!==""?p.weight:""),
+   pheight:(p.height!=null&&p.height!==""?p.height:""),
+   pgender:p.gender||"masculino"
+ };
  Object.keys(vals).forEach(function(id){const el=document.getElementById(id);if(el)el.value=vals[id]});
  show("profile")
 }
@@ -3862,7 +3959,7 @@ function calcTreadmill(){
  document.getElementById("tmCalories").textContent=kcal+" kcal";
 }
 function iOf(d){return days.indexOf(d)}
-function openDay(i){currentDay=i;state.dayOpened=i;save();renderWorkout();show("workout")}
+function openDay(i){try{i=(i==null||isNaN(+i))?0:(+i);currentDay=i;if(typeof state!=='undefined'&&state){state.dayOpened=i;try{save()}catch(e){}}try{if((typeof days==='undefined'||!days||!days.length)&&typeof PROGRAMS!=='undefined'){var g=(typeof trainingGoal!=='undefined'&&trainingGoal)||(state&&state.trainingGoal)||'mass';days=PROGRAMS[g]||PROGRAMS.mass||days}}catch(eD){}try{renderWorkout()}catch(eR){console.warn('[HT] renderWorkout',eR)}if(typeof window.htUiUnlock==='function')try{htUiUnlock()}catch(eU){}show("workout")}catch(err){console.warn('[HT] openDay',err);try{show("workout")}catch(e2){}}}
 function renderWorkout(){
  const d=days[currentDay];
  document.getElementById("workoutTitle").textContent=d.name;
@@ -16503,13 +16600,40 @@ function getSess() {
   function screenMasterDash() {
     var sess = getSess();
     if (!sess || sess.role !== 'MASTER') return go(screenMasterLogin);
+    /* Sync configuração ↔ Master ANTES de desenhar */
+    try{ if(window.htSyncBothPanels) window.htSyncBothPanels(); }catch(eSync){}
+    try{ if(window.htGmReload) window.htGmReload(); }catch(eR){}
     var d = masterDashData();
+    /* Lista contas do Acesso Livre (vindas do painel configuração / criar conta) */
+    var freeList = [];
+    try{
+      var gFree = load();
+      var openA = gFree.academies && gFree.academies['OPEN_LIVRE'];
+      if(openA && openA.students){
+        freeList = Object.values(openA.students);
+      }
+    }catch(eF){}
+    var freeHtml = freeList.length
+      ? freeList.map(function(st){
+          return '<div style="padding:8px 0;border-top:1px solid #1a2a3a;font-size:12px">' +
+            '<b style="color:#fff">' + esc(st.name || 'Sem nome') + '</b><br/>' +
+            '<span style="color:#8ea0b8">' + esc(st.email || '') + '</span></div>';
+        }).join('')
+      : '<p style="font-size:11px;color:#888;margin:0">Nenhuma conta em Acesso Livre ainda. Contas do painel Configuração / Criar conta aparecem aqui após sincronizar.</p>';
     openUI();
     root().innerHTML =
       '<div class="gmApp">' +
       '<div class="gmTop"><div><h1>Painel Master</h1><div class="sub">Criador · todas as unidades</div></div>' +
       '<button class="gmIcon" id="gmOut" title="Sair">⎋</button></div>' +
       '<div class="gmPad">' +
+      '<div class="gmCard" style="margin-bottom:12px;border-color:#168cff">' +
+      '<div style="font-weight:900;margin-bottom:6px">🔄 Contas do app (Configuração ↔ Master)</div>' +
+      '<p style="font-size:11px;color:#888;margin:0 0 10px;line-height:1.4">Alunos que se cadastraram pelo app (sem academia) ficam em <b style="color:#ffbd3e">Acesso Livre</b>. Toque em sincronizar se ainda não aparecerem.</p>' +
+      '<button type="button" class="gmBtn" id="gmSyncAuthNow" style="background:linear-gradient(135deg,#168cff,#0a67d3);margin-bottom:10px">🔄 Sincronizar contas agora</button>' +
+      '<div style="font-size:11px;color:#56b5ff;font-weight:800;margin-bottom:4px">Acesso Livre · ' + freeList.length + ' conta(s)</div>' +
+      '<div id="gmFreeList">' + freeHtml + '</div>' +
+      '<button type="button" class="gmBtn sm" id="gmOpenLivre" style="margin-top:10px;width:auto">Abrir unidade Acesso Livre →</button>' +
+      '</div>' +
       '<div class="gmGrid2">' +
       '<div class="gmStat red"><div class="l">Unidades</div><div class="v">' + d.units + '</div><div class="h">Total de academias</div></div>' +
       '<div class="gmStat blue"><div class="l">Alunos</div><div class="v">' + d.students + '</div><div class="h">Total cadastrados</div></div>' +
@@ -16562,6 +16686,17 @@ function getSess() {
       '</div></div>';
 
     document.getElementById('gmOut').onclick = function () { clearSess(); if (typeof goAccessScreen === 'function') goAccessScreen(); else closeUI(); toast('Sessão Master encerrada'); };
+        var btnSync = document.getElementById('gmSyncAuthNow');
+    if(btnSync) btnSync.onclick = function(){
+      try{
+        var n = window.htSyncBothPanels ? window.htSyncBothPanels() : 0;
+        try{ if(window.htGmReload) window.htGmReload(); }catch(e){}
+        toast('Sincronizado. Contas da configuração → Acesso Livre.');
+        go(screenMasterDash);
+      }catch(err){ toast('Erro ao sincronizar'); console.error(err); }
+    };
+    var btnLivre = document.getElementById('gmOpenLivre');
+    if(btnLivre) btnLivre.onclick = function(){ go(function(){ screenUnit('OPEN_LIVRE'); }); };
     document.getElementById('gmPersonal').onclick = function () { enterMasterPersonalMode(); };
     if (document.getElementById('gmFrames')) document.getElementById('gmFrames').onclick = function () {
       try { window.GM_FRAME_SCOPE = { type: 'master' }; } catch (e) {}
@@ -27156,7 +27291,7 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
     card.className = 'htEvoSection';
     card.innerHTML =
       '<h3>🧮 Calculadora de BF (% gordura)</h3>'+
-      '<p style="font-size:11px;color:#9fb0c5;margin:0 0 10px;line-height:1.4">Preencha os campos e toque em <b>Calcular BF</b>. Com cintura e pescoço o cálculo usa o método US Navy (mais preciso). Sem medidas, usa estimativa por IMC.</p>'+
+      '<p style="font-size:11px;color:#9fb0c5;margin:0 0 10px;line-height:1.4">Preencha os campos e toque em <b>Calcular BF</b>. Com cintura e pescoço usa US Navy (mais preciso). Sem medidas, estima por IMC. O resultado também mostra <b>TMB, gasto diário, massa magra/gorda e metas calóricas</b>.</p>'+
       '<div class="htEvoGrid" style="margin-bottom:8px">'+
         '<input id="htBfAge" type="text" inputmode="decimal" placeholder="Idade (anos)">'+
         '<input id="htBfHeight" type="text" inputmode="decimal" autocomplete="off" placeholder="Altura: 1.72 ou 172">'+
@@ -27337,13 +27472,81 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
       ? 'Referência mulheres: atlético 14–20% · fitness 21–24% · aceitável 25–31%'
       : 'Referência homens: atlético 6–13% · fitness 14–17% · aceitável 18–24%';
 
+    /* ---- Métricas extras: IMC, massa magra/gorda, TMB, gasto diário, metas ---- */
+    var wkg = weight || 0;
+    var hM = height/100;
+    var bmi = (wkg>0 && hM>0) ? Math.round((wkg/(hM*hM))*10)/10 : null;
+    var fatMass = (wkg>0) ? Math.round((wkg * bf / 100)*10)/10 : null;
+    var leanMass = (wkg>0 && fatMass!=null) ? Math.round((wkg - fatMass)*10)/10 : null;
+    var bmiLabel = '—';
+    if(bmi!=null){
+      if(bmi<18.5) bmiLabel='Abaixo do peso';
+      else if(bmi<25) bmiLabel='Peso normal';
+      else if(bmi<30) bmiLabel='Sobrepeso';
+      else bmiLabel='Obesidade';
+    }
+    /* Mifflin-St Jeor (altura já em cm) */
+    var sexConst = isF ? -161 : 5;
+    var bmr = (wkg>0) ? Math.round(10*wkg + 6.25*height - 5*age + sexConst) : null;
+    var tdee = (bmr!=null) ? Math.round(bmr * 1.55) : null; /* atividade moderada */
+    var kcalMass = (tdee!=null) ? tdee + 250 : null;
+    var kcalCut = (tdee!=null) ? Math.max(Math.round((bmr||0)*1.2), tdee - 400) : null;
+    var idealBfLow = isF ? 21 : 10;
+    var idealBfHigh = isF ? 24 : 17;
+    var idealWeightLow = (leanMass!=null) ? Math.round((leanMass / (1 - idealBfHigh/100))*10)/10 : null;
+    var idealWeightHigh = (leanMass!=null) ? Math.round((leanMass / (1 - idealBfLow/100))*10)/10 : null;
+
+    function cell(label, val, sub){
+      return '<div style="padding:10px 6px;border-radius:12px;background:#050c16;border:1px solid #243650;text-align:center">'+
+        '<div style="font-size:16px;font-weight:950;color:#55c4ff;line-height:1.1">'+(val!=null?val:'—')+'</div>'+
+        '<div style="font-size:9px;color:#8ea0b8;margin-top:4px;font-weight:800">'+label+'</div>'+
+        (sub ? '<div style="font-size:8px;color:#71839a;margin-top:2px">'+sub+'</div>' : '')+
+      '</div>';
+    }
+
     resultBox.style.display='block';
     resultBox.style.borderColor = color+'55';
     resultBox.innerHTML =
       '<div style="font-size:12px;color:#9fb0c5;margin-bottom:4px">Seu BF estimado</div>'+
       '<div style="font-size:36px;font-weight:950;color:'+color+';line-height:1">'+bf+'%</div>'+
       '<div style="margin-top:6px;font-size:12px;font-weight:900;color:'+color+'">'+catLabel+'</div>'+
-      '<div style="margin-top:10px;font-size:10px;color:#9fb0c5;line-height:1.45">'+method+'<br>'+ref+'</div>';
+      '<div style="margin-top:10px;font-size:10px;color:#9fb0c5;line-height:1.45">'+method+'<br>'+ref+'</div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:14px">'+
+        cell('IMC', bmi!=null?bmi:'—', bmiLabel)+
+        cell('Massa gorda', fatMass!=null?fatMass+' kg':'—', '')+
+        cell('Massa magra', leanMass!=null?leanMass+' kg':'—', 'músculo + ossos + água')+
+        cell('Peso atual', wkg?wkg+' kg':'—', '')+
+      '</div>'+
+      '<div style="margin-top:12px;padding:12px;border-radius:12px;background:#06101c;border:1px solid #29405d;text-align:left">'+
+        '<div style="font-size:11px;font-weight:900;color:#56b5ff;margin-bottom:8px">🔥 Metabolismo (pelos seus dados)</div>'+
+        '<div style="font-size:12px;color:#c5d3e3;line-height:1.55">'+
+          'Metabolismo basal (TMB): <b style="color:#fff">'+(bmr!=null?bmr+' kcal':'—')+'</b><br>'+
+          'Gasto diário estimado: <b style="color:#fff">'+(tdee!=null?tdee+' kcal':'—')+'</b> <span style="color:#8ea0b8;font-size:10px">(atividade moderada ×1,55)</span><br>'+
+          'Meta ganho de massa: <b style="color:#20e083">'+(kcalMass!=null?kcalMass+' kcal':'—')+'</b> <span style="color:#8ea0b8;font-size:10px">(+250 superávit)</span><br>'+
+          'Meta emagrecimento: <b style="color:#ffbd3e">'+(kcalCut!=null?kcalCut+' kcal':'—')+'</b> <span style="color:#8ea0b8;font-size:10px">(déficit ~400)</span><br>'+
+          'Meta manutenção: <b style="color:#55c4ff">'+(tdee!=null?tdee+' kcal':'—')+'</b>'+
+        '</div>'+
+        (function(){
+          if(!wkg || !tdee) return '';
+          var protG = Math.round(2.0*wkg);
+          var fatG = Math.round(0.8*wkg);
+          var carbMass = Math.round((kcalMass - (protG*4 + fatG*9))/4);
+          var carbCut = Math.round((kcalCut - (protG*4 + fatG*9))/4);
+          var carbMaint = Math.round((tdee - (protG*4 + fatG*9))/4);
+          if(carbMass<0) carbMass=0; if(carbCut<0) carbCut=0; if(carbMaint<0) carbMaint=0;
+          return '<div style="margin-top:10px;padding-top:8px;border-top:1px solid #243650;font-size:11px;color:#c5d3e3;line-height:1.5">'+
+            '<div style="font-weight:900;color:#ffbd3e;margin-bottom:4px">🍽️ Metas de macros (sugeridas)</div>'+
+            '<div>Proteína: <b style="color:#61ef63">'+protG+' g</b> · Gordura: <b style="color:#ff6670">'+fatG+' g</b></div>'+
+            '<div>Carbo (massa): <b>'+carbMass+' g</b> → soma ≈ '+(protG*4+carbMass*4+fatG*9)+' kcal</div>'+
+            '<div>Carbo (emagrecer): <b>'+carbCut+' g</b> → soma ≈ '+(protG*4+carbCut*4+fatG*9)+' kcal</div>'+
+            '<div>Carbo (manutenção): <b>'+carbMaint+' g</b> → soma ≈ '+(protG*4+carbMaint*4+fatG*9)+' kcal</div>'+
+            '</div>';
+        })()+
+        (idealWeightLow!=null && idealWeightHigh!=null
+          ? '<div style="margin-top:8px;font-size:10px;color:#a8b8ca;line-height:1.4">Faixa de peso estimada para BF fitness (~'+idealBfLow+'–'+idealBfHigh+'%), mantendo massa magra atual: <b style="color:#ffbd3e">'+Math.min(idealWeightLow,idealWeightHigh)+' – '+Math.max(idealWeightLow,idealWeightHigh)+' kg</b></div>'
+          : '')+
+        '<div style="margin-top:8px;font-size:9px;color:#71839a;line-height:1.35">TMB Mifflin-St Jeor. Macros fecham com as kcal. Valores são estimativas — não substituem orientação profissional.</div>'+
+      '</div>';
 
     /* grava no estado e atualiza silhueta */
     var s=st();
@@ -27351,6 +27554,13 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
       s.evolution = s.evolution || {};
       s.evolution.bodyFat = bf;
       s.evolution.bodyFatMethod = method;
+      s.evolution.bmi = (typeof bmi!=='undefined') ? bmi : null;
+      s.evolution.fatMass = (typeof fatMass!=='undefined') ? fatMass : null;
+      s.evolution.leanMass = (typeof leanMass!=='undefined') ? leanMass : null;
+      s.evolution.bmr = (typeof bmr!=='undefined') ? bmr : null;
+      s.evolution.tdee = (typeof tdee!=='undefined') ? tdee : null;
+      s.evolution.kcalMass = (typeof kcalMass!=='undefined') ? kcalMass : null;
+      s.evolution.kcalCut = (typeof kcalCut!=='undefined') ? kcalCut : null;
       s.evolution.measures = s.evolution.measures || {};
       if(waist) s.evolution.measures.waist = waist;
       if(neck) s.evolution.measures.neck = neck;
@@ -29213,9 +29423,14 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
       var auth = document.getElementById('authAdminLogin');
       if(auth && auth.classList.contains('active')) return false;
     }catch(e){}
-    // Só flags explícitas — NÃO abrir só porque o dia está completo
     if(window.__htShareAllowed) return true;
     if(window.__htWeeklyShareActive) return true;
+    try{
+      if(typeof isDayMainDone==='function' && typeof currentDay!=='undefined' && isDayMainDone(currentDay)){
+        window.__htShareAllowed = true;
+        return true;
+      }
+    }catch(e){}
     return false;
   }
   function closeShare(force){
@@ -30289,6 +30504,1162 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(wire,300); });
   else setTimeout(wire,300);
   setInterval(wire, 1500);
+})();
+</script>
+
+
+<!-- ===== HT UI RESPONSIVENESS FIX V52 =====
+     - Treino abre de forma estável
+     - Compartilhamento após 4 exercícios (não só ranking)
+     - Anti-freeze: desbloqueio automático ao trocar de aba
+     - 3 toques no canto superior esquerdo = destravar
+-->
+<script id="htUiResponsivenessV52">
+(function(){
+  'use strict';
+  var LOG = '[HT UI-V52]';
+  function log(){ try{ console.log.apply(console, [LOG].concat([].slice.call(arguments))); }catch(e){} }
+
+  var GHOST_IDS = [
+    'gmRoot','restOverlay','celebrate','dayCelebrate','monthEndModal',
+    'htShareGumOverlay','htShareCamEvoStyle','htShareCamOverlay',
+    'htEvoCamOverlay','htCamV44','htEvoOnlyCamOverlay',
+    'htCatOverlay','htAccessDesk','htAccessApiPanel'
+  ];
+
+  function killGhost(el){
+    if(!el) return;
+    try{
+      if(el.id === 'gmRoot'){
+        if(el.classList.contains('show')) return;
+        el.classList.remove('show');
+        el.style.display = 'none';
+        el.style.visibility = 'hidden';
+        el.style.pointerEvents = 'none';
+        el.style.opacity = '0';
+        el.style.zIndex = '-1';
+        return;
+      }
+      if(el.classList && el.classList.contains('show')) return;
+      if(el.id === 'restOverlay' || el.id === 'celebrate' || el.id === 'dayCelebrate' || el.id === 'monthEndModal'){
+        el.classList.remove('show');
+        el.style.display = 'none';
+        el.style.pointerEvents = 'none';
+        el.style.visibility = 'hidden';
+        el.style.opacity = '0';
+        return;
+      }
+      if(el.getAttribute && el.getAttribute('data-ht-stale') === '1'){
+        try{ el.remove(); }catch(e){}
+      }
+    }catch(e){}
+  }
+
+  function unlockBody(){
+    try{
+      document.body.style.pointerEvents = 'auto';
+      document.documentElement.style.pointerEvents = 'auto';
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+      document.body.style.touchAction = '';
+      document.documentElement.style.touchAction = '';
+    }catch(e){}
+  }
+
+  function unlockBottom(){
+    try{
+      var bottom = document.getElementById('bottom');
+      if(!bottom) return;
+      var hide = false;
+      ['authWelcome','paywall','admin','authAdminLogin','authRegister'].forEach(function(id){
+        var el = document.getElementById(id);
+        if(el && el.classList.contains('active')) hide = true;
+      });
+      var gm = document.getElementById('gmRoot');
+      if(gm && gm.classList.contains('show')) hide = true;
+      if(hide){ bottom.style.display = 'none'; return; }
+      bottom.style.display = 'flex';
+      bottom.style.pointerEvents = 'auto';
+      bottom.style.visibility = 'visible';
+      bottom.style.opacity = '1';
+      bottom.style.zIndex = '1200';
+      bottom.querySelectorAll('.nav, button').forEach(function(b){
+        b.style.pointerEvents = 'auto';
+        b.style.touchAction = 'manipulation';
+      });
+    }catch(e){}
+  }
+
+  function unlockActiveScreen(){
+    try{
+      var active = document.querySelector('.screen.active');
+      if(!active) return;
+      active.style.pointerEvents = 'auto';
+      active.style.visibility = 'visible';
+      active.style.opacity = '1';
+      active.querySelectorAll('button, a, input, select, .day, .exercise, .nav, .bigBtn, .authBtn').forEach(function(el){
+        if(el.disabled) return;
+        el.style.pointerEvents = 'auto';
+      });
+    }catch(e){}
+  }
+
+  function htUiUnlock(opts){
+    opts = opts || {};
+    try{
+      GHOST_IDS.forEach(function(id){
+        var el = document.getElementById(id);
+        if(el) killGhost(el);
+      });
+      if(opts.forceCamClose){
+        try{
+          document.querySelectorAll('[id*="CamOverlay"], [id*="ShareGum"], [id*="ShareCam"]').forEach(function(el){
+            if(!el || !el.id) return;
+            var v = el.querySelector('video');
+            if(v && v.srcObject) return;
+            try{ el.remove(); }catch(e){}
+          });
+        }catch(e){}
+      }
+      unlockBody();
+      unlockBottom();
+      unlockActiveScreen();
+      try{
+        var ad = document.getElementById('admin');
+        if(ad && ad.classList.contains('active')){
+          window.__htShareAllowed = false;
+          var day = document.getElementById('dayCelebrate');
+          if(day){
+            day.classList.remove('show');
+            day.style.display = 'none';
+            day.style.pointerEvents = 'none';
+          }
+        }
+      }catch(e){}
+    }catch(e){ log('unlock fail', e); }
+    return true;
+  }
+  window.htUiUnlock = htUiUnlock;
+
+  function patchShow(){
+    if(typeof window.show !== 'function' || window.show.__htV52) return;
+    var prev = window.show;
+    window.show = function(id){
+      try{ htUiUnlock(); }catch(e){}
+      var r;
+      try{ r = prev.apply(this, arguments); }
+      catch(err){
+        log('show error', err);
+        try{ htUiUnlock({ forceCamClose: true }); }catch(e2){}
+        throw err;
+      }
+      setTimeout(function(){ htUiUnlock(); }, 20);
+      setTimeout(function(){ htUiUnlock(); }, 200);
+      return r;
+    };
+    window.show.__htV52 = true;
+  }
+
+  function wireBottomNav(){
+    try{
+      var bottom = document.getElementById('bottom');
+      if(!bottom || bottom.__htV52Nav) return;
+      bottom.__htV52Nav = true;
+      bottom.addEventListener('touchstart', function(){ htUiUnlock(); }, {capture:true, passive:true});
+      bottom.addEventListener('click', function(){ htUiUnlock(); }, true);
+    }catch(e){}
+  }
+
+  function wireEmergency(){
+    if(window.__htV52Emerg) return;
+    window.__htV52Emerg = true;
+    var taps = [];
+    document.addEventListener('touchstart', function(ev){
+      var t = ev.touches && ev.touches[0];
+      if(!t) return;
+      if(t.clientX < 80 && t.clientY < 80){
+        var now = Date.now();
+        taps.push(now);
+        taps = taps.filter(function(x){ return now - x < 1200; });
+        if(taps.length >= 3){
+          taps = [];
+          htUiUnlock({ forceCamClose: true });
+          try{ if(typeof htForceUnlock === 'function') htForceUnlock(); }catch(e){}
+          try{ if(typeof toast === 'function') toast('Interface destravada'); }catch(e){}
+        }
+      }
+    }, {passive:true});
+  }
+
+  function patchComplete(){
+    if(typeof window.completeCurrent !== 'function' || window.completeCurrent.__htV52) return;
+    var prev = window.completeCurrent;
+    window.completeCurrent = function(){
+      var ret = prev.apply(this, arguments);
+      try{
+        var dayIdx = (typeof currentDay !== 'undefined') ? currentDay : 0;
+        if(typeof isDayMainDone === 'function' && isDayMainDone(dayIdx)){
+          window.__htShareAllowed = true;
+          window.__htBlockShareFromEvo = false;
+          setTimeout(function(){
+            try{ if(typeof openDayCelebrate === 'function') openDayCelebrate(); }catch(e){}
+          }, 80);
+        }
+      }catch(e){}
+      return ret;
+    };
+    window.completeCurrent.__htV52 = true;
+  }
+
+  function safeOpenDay(i){
+    try{
+      if(typeof openDay === 'function') return openDay(i);
+    }catch(e){}
+    try{ if(typeof show === 'function') show('workout'); }catch(e2){}
+  }
+  window.htSafeOpenDay = safeOpenDay;
+
+  function boot(){
+    patchShow();
+    wireBottomNav();
+    wireEmergency();
+    patchComplete();
+    htUiUnlock();
+    log('responsiveness unlock ativo');
+  }
+
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot, 200); });
+  } else {
+    setTimeout(boot, 200);
+  }
+  setTimeout(boot, 1000);
+  setTimeout(boot, 2500);
+
+  setInterval(function(){
+    try{
+      patchShow();
+      wireBottomNav();
+      patchComplete();
+      var gm = document.getElementById('gmRoot');
+      if(gm && !gm.classList.contains('show')){
+        if(gm.style.pointerEvents !== 'none' || (gm.style.display && gm.style.display !== 'none')){
+          htUiUnlock();
+        }
+      }
+      var day = document.getElementById('dayCelebrate');
+      if(day && !day.classList.contains('show')){
+        var d = (day.style && day.style.display) || '';
+        if(d === 'flex' || d === 'block' || day.style.pointerEvents === 'auto'){
+          day.style.display = 'none';
+          day.style.pointerEvents = 'none';
+          day.style.visibility = 'hidden';
+        }
+      }
+      var rest = document.getElementById('restOverlay');
+      if(rest && !rest.classList.contains('show')){
+        if(rest.style.display === 'flex' || rest.style.pointerEvents === 'auto'){
+          rest.style.display = 'none';
+          rest.style.pointerEvents = 'none';
+        }
+      }
+    }catch(e){}
+  }, 3500);
+})();
+</script>
+
+
+
+<!-- ===== HT FIX V53 — SYNC CADASTRO MASTER + NUTRI + ANTI-TRAVAMENTO ===== -->
+<script id="htFixV53SyncNutriFreeze">
+(function(){
+  'use strict';
+  var LOG = '[HT V53]';
+  function log(){ try{ console.log.apply(console, [LOG].concat([].slice.call(arguments))); }catch(e){} }
+  function toastMsg(m){ try{ if(typeof toast==='function') toast(m); }catch(e){} }
+  function fb(){ return window.htFirebase && window.htFirebase.db ? window.htFirebase.db : null; }
+  function emailKey(e){ return String(e||'').trim().toLowerCase().replace(/[.#$\[\]]/g,'_'); }
+  function now(){ return Date.now(); }
+  function OPEN_ID(){ return 'OPEN_LIVRE'; }
+
+  function gmIsOpen(){
+    try{
+      var gm = document.getElementById('gmRoot');
+      return !!(gm && gm.classList.contains('show'));
+    }catch(e){ return false; }
+  }
+
+  /* ========== 1) Garante Academia Acesso Livre ========== */
+  function ensureOpenAcademyLocal(){
+    var OPEN = OPEN_ID();
+    try{
+      if(typeof window.htEnsureOpenAcademy === 'function'){
+        window.htEnsureOpenAcademy();
+      }
+    }catch(e){}
+    try{
+      var raw = localStorage.getItem('gymmasterFullV7');
+      var g = raw ? JSON.parse(raw) : {};
+      g.academies = g.academies || {};
+      g.accounts = g.accounts || {};
+      if(!g.academies[OPEN]){
+        g.academies[OPEN] = {
+          academyId: OPEN,
+          name: 'Acesso Livre (sem academia)',
+          inviteCode: 'LIVRE',
+          codigoAcademia: 'LIVRE',
+          status: 'active',
+          studentLimit: 99999,
+          planValue: 0,
+          responsible: 'Sistema',
+          createdAt: now(),
+          shareBrand: { brandName: 'Acesso Livre', appLink: '', primaryColor: '#168cff', showLink: true },
+          admins: {},
+          students: {},
+          payments: {},
+          isOpenGroup: true
+        };
+        localStorage.setItem('gymmasterFullV7', JSON.stringify(g));
+      }
+      try{ if(typeof window.htGmReload === 'function') window.htGmReload(); }catch(e2){}
+      return OPEN;
+    }catch(e){ return OPEN; }
+  }
+
+  /* ========== 2) Merge usuário cloud → gymmaster local ========== */
+  function mergeCloudUserIntoGm(u){
+    if(!u || !u.email) return false;
+    var email = String(u.email).trim().toLowerCase();
+    if(!email) return false;
+    ensureOpenAcademyLocal();
+    var changed = false;
+    try{
+      var raw = localStorage.getItem('gymmasterFullV7');
+      var g = raw ? JSON.parse(raw) : { academies:{}, accounts:{} };
+      g.academies = g.academies || {};
+      g.accounts = g.accounts || {};
+
+      var aid = String(u.academyId || u.academiaId || '').trim();
+      if(!aid || !g.academies[aid]){
+        // Sem academia válida → Acesso Livre
+        aid = OPEN_ID();
+        if(!g.academies[aid]){
+          g.academies[aid] = {
+            academyId: aid, name: 'Acesso Livre (sem academia)', inviteCode: 'LIVRE',
+            status: 'active', students: {}, admins: {}, payments: {}, isOpenGroup: true, studentLimit: 99999
+          };
+        }
+      }
+      var aca = g.academies[aid];
+      aca.students = aca.students || {};
+
+      // Já existe aluno com este e-mail nesta academia?
+      var existingSid = null;
+      Object.keys(aca.students).forEach(function(sid){
+        var st = aca.students[sid];
+        if(st && String(st.email||'').trim().toLowerCase() === email) existingSid = sid;
+      });
+      // Conta global aponta studentId?
+      var acc = g.accounts[email];
+      if(!existingSid && acc && acc.academyId === aid && acc.studentId && aca.students[acc.studentId]){
+        existingSid = acc.studentId;
+      }
+
+      var name = (u.profile && u.profile.name) || u.name || '';
+      var sid = existingSid || (acc && acc.studentId) || ('S' + now().toString(36).toUpperCase() + Math.random().toString(36).slice(2,4).toUpperCase());
+
+      if(!aca.students[sid]){
+        aca.students[sid] = {
+          studentId: sid,
+          name: name,
+          email: email,
+          cpf: u.cpf || '',
+          planName: 'Mensal',
+          value: 0,
+          dueDate: '',
+          paymentStatus: (Number(u.paidUntil||0) > now()) ? 'paid' : 'pending',
+          accessStatus: u.blocked ? 'blocked' : 'active',
+          accessType: (aid === OPEN_ID() ? 'open' : 'academy'),
+          passHash: u.passHash || (acc && acc.passHash) || '',
+          usingApp: true,
+          lastAccess: u.lastLogin || u.lastSeen || u.updatedAt || now(),
+          createdAt: u.createdAt || now(),
+          fromSelfRegister: !!(u.fromSelfRegister || u.role === 'SELF_REGISTERED')
+        };
+        changed = true;
+      } else {
+        var st = aca.students[sid];
+        if(name && !st.name){ st.name = name; changed = true; }
+        if(u.blocked != null && st.accessStatus !== (u.blocked ? 'blocked' : 'active')){
+          st.accessStatus = u.blocked ? 'blocked' : 'active'; changed = true;
+        }
+        if(u.lastLogin && (!st.lastAccess || st.lastAccess < u.lastLogin)){
+          st.lastAccess = u.lastLogin; st.usingApp = true; changed = true;
+        }
+        if(u.passHash && !st.passHash){ st.passHash = u.passHash; changed = true; }
+      }
+
+      // accounts
+      var role = (u.role === 'ACADEMY_ADMIN') ? 'ACADEMY_ADMIN' :
+                (aid === OPEN_ID() || u.fromSelfRegister || u.role === 'SELF_REGISTERED') ? 'SELF_REGISTERED' : 'STUDENT';
+      if(!g.accounts[email]){
+        g.accounts[email] = {
+          role: role,
+          email: email,
+          name: name,
+          academyId: aid,
+          studentId: sid,
+          createdAt: u.createdAt || now(),
+          fromSelfRegister: !!(u.fromSelfRegister || role === 'SELF_REGISTERED'),
+          passHash: u.passHash || (aca.students[sid] && aca.students[sid].passHash) || ''
+        };
+        changed = true;
+      } else {
+        var a = g.accounts[email];
+        if(!a.academyId){ a.academyId = aid; changed = true; }
+        if(!a.studentId){ a.studentId = sid; changed = true; }
+        if(name && !a.name){ a.name = name; changed = true; }
+        if(u.passHash && !a.passHash){ a.passHash = u.passHash; changed = true; }
+      }
+
+      if(changed){
+        localStorage.setItem('gymmasterFullV7', JSON.stringify(g));
+        try{ if(typeof window.htGmReload === 'function') window.htGmReload(); }catch(eR){}
+      }
+      return changed;
+    }catch(e){
+      log('merge fail', e);
+      return false;
+    }
+  }
+
+  /** Puxa todos os usuários da nuvem e espelha no GymMaster local (Master vê todos) */
+  function pullCloudUsersIntoMaster(){
+    var db = fb();
+    if(!db) return Promise.resolve(0);
+    var job = Promise.resolve();
+    try{
+      if(typeof window.htEnsureCloudAuth === 'function') job = window.htEnsureCloudAuth();
+    }catch(e){}
+    return job.then(function(){
+      return db.collection('users').limit(500).get();
+    }).then(function(snap){
+      var n = 0;
+      snap.forEach(function(doc){
+        var u = doc.data() || {};
+        if(!u.email) u.email = doc.id.replace(/_/g,'.'); // fallback fraco
+        // normaliza email
+        u.email = String(u.email || '').trim().toLowerCase();
+        if(!u.email || u.email.indexOf('@') < 0){
+          // tenta id como email key
+          var id = String(doc.id || '').replace(/_/g,'.');
+          if(id.indexOf('@') >= 0) u.email = id.toLowerCase();
+        }
+        if(!u.email || u.email.indexOf('@') < 0) return;
+        // ignora contas admin/master genéricas sem cadastro aluno
+        if(u.role === 'MASTER' || u.role === 'Admin') return;
+        if(mergeCloudUserIntoGm(u)) n++;
+      });
+      log('cloud→gm merge', n, 'alterações');
+      return n;
+    }).catch(function(err){
+      log('pull cloud users fail', err);
+      return 0;
+    });
+  }
+
+  /** Também puxa auth local (mesmo aparelho) para o GM */
+  function mergeLocalAuthIntoGm(){
+    try{
+      if(typeof authLoad !== 'function') return 0;
+      var db = authLoad() || {};
+      var users = db.users || {};
+      var n = 0;
+      Object.keys(users).forEach(function(email){
+        var u = users[email];
+        if(!u) return;
+        u.email = email;
+        if(mergeCloudUserIntoGm(u)) n++;
+      });
+      return n;
+    }catch(e){ return 0; }
+  }
+
+  /* ========== 3) Reforça doRegister: sempre cria aluno no OPEN_LIVRE ou academia ========== */
+  function strengthenRegister(){
+    if(typeof window.doRegister !== 'function' || window.doRegister.__htV53) return;
+    var prev = window.doRegister;
+    window.doRegister = async function(){
+      var ret = await prev.apply(this, arguments);
+      try{
+        // Após cadastro, força espelho local + cloud
+        var email = '';
+        try{ email = (document.getElementById('regEmail') && document.getElementById('regEmail').value || '').trim().toLowerCase(); }catch(e){}
+        if(!email && typeof getSession === 'function'){
+          var s = getSession(); if(s) email = s.email || '';
+        }
+        if(email){
+          ensureOpenAcademyLocal();
+          // lê o que foi gravado e re-merge
+          try{
+            var localDb = typeof authLoad === 'function' ? authLoad() : {users:{}};
+            var u = (localDb.users && localDb.users[email]) || { email: email, fromSelfRegister: true };
+            u.email = email;
+            // se não tem academyId, OPEN_LIVRE
+            if(!u.academyId) u.academyId = OPEN_ID();
+            mergeCloudUserIntoGm(u);
+          }catch(eM){}
+          try{
+            if(typeof htPushUser === 'function'){
+              htPushUser(email, {
+                fromSelfRegister: true,
+                academyId: (function(){
+                  try{
+                    var ldb = authLoad();
+                    return (ldb.users && ldb.users[email] && ldb.users[email].academyId) || OPEN_ID();
+                  }catch(e){ return OPEN_ID(); }
+                })()
+              });
+            }
+          }catch(eP){}
+          try{
+            if(typeof htSyncGymAccount === 'function'){
+              var ldb2 = typeof authLoad === 'function' ? authLoad() : {users:{}};
+              var uu = (ldb2.users && ldb2.users[email]) || {};
+              htSyncGymAccount({
+                email: email,
+                role: uu.academyId && uu.academyId !== OPEN_ID() ? 'STUDENT' : 'SELF_REGISTERED',
+                fromSelfRegister: true,
+                academyId: uu.academyId || OPEN_ID(),
+                studentId: null,
+                createdAt: uu.createdAt || now(),
+                lastLogin: now(),
+                blocked: false,
+                paidUntil: uu.paidUntil || null,
+                passHash: uu.passHash || null
+              });
+            }
+          }catch(eS){}
+        }
+      }catch(e){ log('post-register reinforce', e); }
+      return ret;
+    };
+    window.doRegister.__htV53 = true;
+  }
+
+  /* ========== 4) Quando Master/Academia abre o painel, sincroniza lista ========== */
+  function patchGmOpen(){
+    function wrap(name){
+      if(typeof window[name] !== 'function' || window[name].__htV53) return;
+      var prev = window[name];
+      window[name] = function(){
+        var r = prev.apply(this, arguments);
+        setTimeout(function(){
+          try{
+            mergeLocalAuthIntoGm();
+            pullCloudUsersIntoMaster().then(function(){
+              // tenta refrescar tela atual do GM se possível
+              try{
+                if(typeof window.htGmReload === 'function') window.htGmReload();
+              }catch(e){}
+            });
+          }catch(e){}
+        }, 300);
+        return r;
+      };
+      window[name].__htV53 = true;
+    }
+    wrap('htOpenMasterAccess');
+    wrap('htOpenAcademiaAccess');
+  }
+
+  // Intervalo leve: só quando painel GM está aberto, re-puxa nuvem a cada 25s
+  var _lastPull = 0;
+  function maybePullWhileGmOpen(){
+    if(!gmIsOpen()) return;
+    var t = now();
+    if(t - _lastPull < 25000) return;
+    _lastPull = t;
+    try{
+      mergeLocalAuthIntoGm();
+      pullCloudUsersIntoMaster();
+    }catch(e){}
+  }
+
+  /* ========== 5) Nutrição: TMB, gasto diário, superávit/déficit ========== */
+  function enhanceNutrition(){
+    if(typeof window.calcNutritionTargets !== 'function') return;
+    if(window.calcNutritionTargets.__htV53) return;
+    var prevCalc = window.calcNutritionTargets;
+    window.calcNutritionTargets = function(){
+      var t = prevCalc.apply(this, arguments) || {};
+      try{
+        var p = (typeof state !== 'undefined' && state.profile) || {age:34,weight:75,height:172,gender:'masculino'};
+        var age = Number(p.age)||34, weight = Number(p.weight)||75, height = Number(p.height)||172;
+        if(height>0 && height<3) height = height*100;
+        if(height<100 || height>250) height = 172;
+        var sex = (String(p.gender||'').toLowerCase().indexOf('fem')>=0) ? -161 : 5;
+        var bmr = Math.round(10*weight + 6.25*height - 5*age + sex);
+        var maintenance = Math.round(bmr * 1.55); // gasto diário estimado (moderado)
+        if(t.maintenance == null) t.maintenance = maintenance;
+        t.bmr = bmr;
+        t.tdee = t.maintenance || maintenance;
+        var goal = (typeof nutritionGoal !== 'undefined') ? nutritionGoal : ((state && state.nutrition && state.nutrition.goal) || 'well');
+        if(goal === 'mass') t.surplus = Math.max(0, (t.kcal||0) - t.tdee);
+        else if(goal === 'fat') t.deficit = Math.max(0, t.tdee - (t.kcal||0));
+        else { t.surplus = 0; t.deficit = 0; }
+      }catch(e){}
+      return t;
+    };
+    window.calcNutritionTargets.__htV53 = true;
+
+    if(typeof window.renderNutrition !== 'function') return;
+    if(window.renderNutrition.__htV53) return;
+    var prevRender = window.renderNutrition;
+    window.renderNutrition = function(){
+      var r = prevRender.apply(this, arguments);
+      try{
+        var t = window.calcNutritionTargets();
+        var host = document.querySelector('.nutriTargets');
+        if(!host) return r;
+        var box = document.getElementById('htNutriMetaBox');
+        if(!box){
+          box = document.createElement('div');
+          box.id = 'htNutriMetaBox';
+          box.style.cssText = 'margin-top:10px;padding:10px;border-radius:12px;background:#050c16;border:1px solid #29405d;font-size:11px;line-height:1.45;color:#c5d3e3';
+          host.appendChild(box);
+        }
+        var goal = (typeof nutritionGoal !== 'undefined') ? nutritionGoal : 'well';
+        var goalLabel = goal==='mass' ? 'Ganho de massa (superávit)' : goal==='fat' ? 'Perda de gordura (déficit)' : 'Bem-estar (manutenção)';
+        var extra = '';
+        if(goal === 'mass'){
+          extra = 'Superávit sugerido: <b style="color:#20e083">+' + (t.surplus||250) + ' kcal</b> acima do gasto diário.';
+        } else if(goal === 'fat'){
+          extra = 'Déficit sugerido: <b style="color:#ffbd3e">−' + (t.deficit||400) + ' kcal</b> em relação ao gasto diário.';
+        } else {
+          extra = 'Meta alinhada ao gasto diário estimado (manutenção).';
+        }
+        box.innerHTML =
+          '<div style="font-weight:900;color:#56b5ff;margin-bottom:6px">📊 Metabolismo (pelos seus dados)</div>' +
+          '<div>Metabolismo basal (TMB): <b style="color:#fff">' + (t.bmr||'—') + ' kcal</b></div>' +
+          '<div>Gasto diário estimado: <b style="color:#fff">' + (t.tdee||t.maintenance||'—') + ' kcal</b></div>' +
+          '<div>Meta calórica do objetivo: <b style="color:#ffbd3e">' + (t.kcal||'—') + ' kcal</b> · ' + goalLabel + '</div>' +
+          '<div style="margin-top:6px;color:#a8b8ca">' + extra + '</div>' +
+          '<div style="margin-top:6px;font-size:9px;color:#71839a">TMB pela fórmula Mifflin-St Jeor. Gasto diário ≈ TMB × 1,55 (atividade moderada). Ajuste o perfil (peso, altura, idade, sexo) para valores mais precisos.</div>';
+      }catch(e){}
+      return r;
+    };
+    window.renderNutrition.__htV53 = true;
+  }
+
+  /* ========== 6) Anti-travamento definitivo no Painel Master / Academia ========== */
+  function protectGmPanel(){
+    // CSS: quando aberto, nada pode roubar toque
+    if(!document.getElementById('htV53GmProtectCss')){
+      var st = document.createElement('style');
+      st.id = 'htV53GmProtectCss';
+      st.textContent =
+        '#gmRoot.show{display:block!important;visibility:visible!important;pointer-events:auto!important;opacity:1!important;z-index:2147483000!important;}' +
+        '#gmRoot.show *{pointer-events:auto;}' +
+        '#gmRoot.show button,#gmRoot.show input,#gmRoot.show select,#gmRoot.show a,' +
+        '#gmRoot.show .gmBtn,#gmRoot.show .gmNav,#gmRoot.show .gmCard,#gmRoot.show .gmIn{' +
+        'pointer-events:auto!important;touch-action:manipulation!important;-webkit-user-select:auto;}' +
+        'body.ht-gm-open #bottom{display:none!important;pointer-events:none!important;}' +
+        'body.ht-gm-open .screen{pointer-events:none!important;}' +
+        'body.ht-gm-open #gmRoot.show, body.ht-gm-open #gmRoot.show *{pointer-events:auto!important;}';
+      document.head.appendChild(st);
+    }
+
+    function markBody(){
+      try{
+        if(gmIsOpen()) document.body.classList.add('ht-gm-open');
+        else document.body.classList.remove('ht-gm-open');
+      }catch(e){}
+    }
+
+    // Observer no gmRoot
+    function attach(){
+      var gm = document.getElementById('gmRoot');
+      if(!gm){ setTimeout(attach, 500); return; }
+      if(gm.__htV53Obs) return;
+      gm.__htV53Obs = true;
+      markBody();
+      new MutationObserver(function(){
+        markBody();
+        if(gm.classList.contains('show')){
+          try{
+            gm.style.pointerEvents = 'auto';
+            gm.style.visibility = 'visible';
+            gm.style.display = 'block';
+            gm.style.opacity = '1';
+            gm.style.zIndex = '2147483000';
+          }catch(e){}
+          // ao abrir: sync contas
+          setTimeout(function(){
+            try{ mergeLocalAuthIntoGm(); pullCloudUsersIntoMaster(); }catch(e){}
+          }, 200);
+        }
+      }).observe(gm, { attributes: true, attributeFilter: ['class','style'] });
+    }
+    attach();
+
+    // Patch softUnlock / htUiUnlock para NUNCA mexer quando GM aberto
+    function guardUnlock(fnName){
+      try{
+        if(typeof window[fnName] !== 'function' || window[fnName].__htV53Guard) return;
+        var prev = window[fnName];
+        window[fnName] = function(){
+          if(gmIsOpen()) return true;
+          return prev.apply(this, arguments);
+        };
+        window[fnName].__htV53Guard = true;
+      }catch(e){}
+    }
+    guardUnlock('htUiUnlock');
+    guardUnlock('htForceUnlock');
+
+    // Impede fullUnlock de limpar o painel se estiver aberto (exceto force explícito do usuário)
+    // Já há softUnlock com gmIsOpen — reforçamos via interval leve
+    setInterval(function(){
+      markBody();
+      if(!gmIsOpen()) return;
+      try{
+        var gm = document.getElementById('gmRoot');
+        if(!gm) return;
+        if(gm.style.pointerEvents === 'none' || gm.style.visibility === 'hidden' || gm.style.display === 'none'){
+          gm.style.pointerEvents = 'auto';
+          gm.style.visibility = 'visible';
+          gm.style.display = 'block';
+          gm.style.opacity = '1';
+          gm.style.zIndex = '2147483000';
+        }
+      }catch(e){}
+      maybePullWhileGmOpen();
+    }, 2000);
+  }
+
+  /* ========== BOOT ========== */
+  function boot(){
+    try{ ensureOpenAcademyLocal(); }catch(e){}
+    try{ strengthenRegister(); }catch(e){}
+    try{ patchGmOpen(); }catch(e){}
+    try{ enhanceNutrition(); }catch(e){}
+    try{ protectGmPanel(); }catch(e){}
+    try{ mergeLocalAuthIntoGm(); }catch(e){}
+    setTimeout(function(){ try{ pullCloudUsersIntoMaster(); }catch(e){} }, 1200);
+    // reassert register wrap (outros scripts reescrevem doRegister)
+    setInterval(function(){
+      try{ strengthenRegister(); enhanceNutrition(); patchGmOpen(); }catch(e){}
+    }, 3000);
+    log('ativo: sync cadastro→Master, nutri TMB/gasto, anti-freeze GM');
+  }
+
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot, 400); });
+  } else {
+    setTimeout(boot, 400);
+  }
+  setTimeout(boot, 2000);
+})();
+</script>
+
+<!-- ===== HT FIX V54 — SYNC 2 PAINÉIS + ANTI-TRAVAMENTO MASTER ===== -->
+<script id="htFixV54SyncPanelsAntiFreeze">
+(function(){
+  'use strict';
+  var LOG = '[HT V54]';
+  function log(){ try{ console.log.apply(console, [LOG].concat([].slice.call(arguments))); }catch(e){} }
+  function now(){ return Date.now(); }
+  function OPEN_ID(){ return 'OPEN_LIVRE'; }
+
+  function gmIsOpen(){
+    try{
+      var gm = document.getElementById('gmRoot');
+      return !!(gm && gm.classList.contains('show'));
+    }catch(e){ return false; }
+  }
+
+  function authLoadSafe(){
+    try{
+      if(typeof authLoad === 'function') return authLoad() || {users:{}};
+      return JSON.parse(localStorage.getItem('heltonAuthV1')||'{"users":{}}');
+    }catch(e){ return {users:{}}; }
+  }
+  function authSaveSafe(db){
+    try{
+      if(typeof authSave === 'function'){ authSave(db); return; }
+      localStorage.setItem('heltonAuthV1', JSON.stringify(db||{users:{}}));
+    }catch(e){}
+  }
+  function gmLoad(){
+    /* Preferir o banco em memória do GymMaster (evita race com save interno) */
+    try{
+      if(typeof window.htGmReload === 'function'){
+        var g0 = window.htGmReload();
+        if(g0 && typeof g0 === 'object') return g0;
+      }
+    }catch(e){}
+    try{ return JSON.parse(localStorage.getItem('gymmasterFullV7')||'{}')||{}; }catch(e){ return {}; }
+  }
+  function gmSave(g){
+    try{
+      /* Se o GymMaster expõe save, mutamos o objeto vivo e salvamos por ele */
+      if(typeof window.htGmSave === 'function' && g){
+        try{ localStorage.setItem('gymmasterFullV7', JSON.stringify(g)); }catch(e1){}
+        try{ window.htGmReload && window.htGmReload(); }catch(e2){}
+        try{ window.htGmSave(); }catch(e3){
+          localStorage.setItem('gymmasterFullV7', JSON.stringify(g||{}));
+        }
+        return;
+      }
+      localStorage.setItem('gymmasterFullV7', JSON.stringify(g||{}));
+    }catch(e){}
+  }
+
+  function ensureOpenAcademy(g){
+    g = g || gmLoad();
+    g.academies = g.academies || {};
+    g.accounts = g.accounts || {};
+    var OPEN = OPEN_ID();
+    if(!g.academies[OPEN]){
+      g.academies[OPEN] = {
+        academyId: OPEN, name: 'Acesso Livre (sem academia)', inviteCode: 'LIVRE',
+        codigoAcademia: 'LIVRE', status: 'active', studentLimit: 99999, planValue: 0,
+        responsible: 'Sistema', createdAt: now(), admins: {}, students: {}, payments: {}, isOpenGroup: true
+      };
+    }
+    return g;
+  }
+
+  function syncAuthToGm(){
+    var changed = 0;
+    try{
+      var db = authLoadSafe();
+      var users = (db && db.users) || {};
+      var g = ensureOpenAcademy(gmLoad());
+      Object.keys(users).forEach(function(email){
+        email = String(email||'').trim().toLowerCase();
+        if(!email || email.indexOf('@')<0) return;
+        var u = users[email];
+        if(!u) return;
+        if(u.role === 'MASTER' || u.role === 'Admin') return;
+        var aid = String(u.academyId || u.academiaId || '').trim();
+        if(!aid || !g.academies[aid]) aid = OPEN_ID();
+        var aca = g.academies[aid];
+        if(!aca) return;
+        aca.students = aca.students || {};
+        var existingSid = null;
+        Object.keys(aca.students).forEach(function(sid){
+          var st = aca.students[sid];
+          if(st && String(st.email||'').trim().toLowerCase() === email) existingSid = sid;
+        });
+        if(!existingSid && g.accounts[email] && g.accounts[email].studentId && aca.students[g.accounts[email].studentId]){
+          existingSid = g.accounts[email].studentId;
+        }
+        var name = (u.profile && u.profile.name) || u.name || '';
+        var sid = existingSid || (g.accounts[email] && g.accounts[email].studentId) || ('S' + now().toString(36).toUpperCase() + Math.random().toString(36).slice(2,4).toUpperCase());
+        if(!aca.students[sid]){
+          aca.students[sid] = {
+            studentId: sid, name: name, email: email, cpf: u.cpf || '',
+            planName: 'Mensal', value: 0, dueDate: '',
+            paymentStatus: (Number(u.paidUntil||0) > now()) ? 'paid' : 'pending',
+            accessStatus: u.blocked ? 'blocked' : 'active',
+            accessType: (aid === OPEN_ID() ? 'open' : 'academy'),
+            passHash: u.passHash || '', usingApp: true,
+            lastAccess: u.lastLogin || u.updatedAt || now(),
+            createdAt: u.createdAt || now(),
+            fromSelfRegister: !!(u.fromSelfRegister || !u.academyId)
+          };
+          changed++;
+        } else {
+          var st = aca.students[sid];
+          if(name && st.name !== name){ st.name = name; changed++; }
+          if(u.passHash && !st.passHash){ st.passHash = u.passHash; changed++; }
+          var wantStatus = u.blocked ? 'blocked' : 'active';
+          if(st.accessStatus !== wantStatus){ st.accessStatus = wantStatus; changed++; }
+          if(Number(u.paidUntil||0) > now()) st.paymentStatus = 'paid';
+          st.usingApp = true;
+          st.lastAccess = u.lastLogin || st.lastAccess || now();
+        }
+        if(!g.accounts[email]){
+          g.accounts[email] = {
+            role: (aid === OPEN_ID() ? 'SELF_REGISTERED' : 'STUDENT'),
+            email: email, name: name, academyId: aid, studentId: sid,
+            createdAt: u.createdAt || now(),
+            fromSelfRegister: !!(u.fromSelfRegister || aid === OPEN_ID()),
+            passHash: u.passHash || ''
+          };
+          changed++;
+        } else {
+          var a = g.accounts[email];
+          if(!a.academyId){ a.academyId = aid; changed++; }
+          if(!a.studentId){ a.studentId = sid; changed++; }
+          if(name && !a.name){ a.name = name; changed++; }
+          if(u.passHash && !a.passHash){ a.passHash = u.passHash; changed++; }
+        }
+      });
+      if(changed || true){
+        /* Sempre persiste o objeto vivo (mesmo 0 alterações garante OPEN_LIVRE) */
+        try{ localStorage.setItem('gymmasterFullV7', JSON.stringify(g)); }catch(eLS){}
+        gmSave(g);
+        try{ if(window.htGmReload) window.htGmReload(); }catch(e){}
+        try{ if(window.htGmSave) window.htGmSave(); }catch(e){}
+      }
+      log('auth→gm', changed, 'users auth=', Object.keys(users).length);
+    }catch(e){ log('auth→gm fail', e); }
+    return changed;
+  }
+
+  function syncGmToAuth(){
+    var changed = 0;
+    try{
+      var g = gmLoad();
+      var db = authLoadSafe();
+      db.users = db.users || {};
+      Object.keys(g.academies || {}).forEach(function(aid){
+        var aca = g.academies[aid];
+        if(!aca || !aca.students) return;
+        Object.keys(aca.students).forEach(function(sid){
+          var st = aca.students[sid];
+          if(!st) return;
+          var email = String(st.email||'').trim().toLowerCase();
+          if(!email || email.indexOf('@')<0) return;
+          var u = db.users[email];
+          if(!u){
+            db.users[email] = {
+              email: email, passHash: st.passHash || '',
+              createdAt: st.createdAt || now(), lastLogin: st.lastAccess || null,
+              paidUntil: null, blocked: String(st.accessStatus||'') === 'blocked',
+              profile: st.name ? { name: st.name } : null,
+              role: 'STUDENT', academyId: aid, studentId: sid, cpf: st.cpf || null,
+              fromSelfRegister: !!st.fromSelfRegister, fromGymMaster: true
+            };
+            changed++;
+          } else {
+            if(st.passHash && !u.passHash){ u.passHash = st.passHash; changed++; }
+            if(st.name && (!u.profile || !u.profile.name)){
+              u.profile = u.profile || {}; u.profile.name = st.name; changed++;
+            }
+            if(!u.academyId){ u.academyId = aid; changed++; }
+            if(!u.studentId){ u.studentId = sid; changed++; }
+            var blocked = String(st.accessStatus||'') === 'blocked';
+            if(!!u.blocked !== blocked){ u.blocked = blocked; changed++; }
+          }
+        });
+      });
+      if(changed){
+        authSaveSafe(db);
+        try{ if(typeof renderAdmin === 'function') renderAdmin(); }catch(e){}
+      }
+      log('gm→auth', changed);
+    }catch(e){ log('gm→auth fail', e); }
+    return changed;
+  }
+
+  function syncBothPanels(){
+    var a = syncAuthToGm();
+    var b = syncGmToAuth();
+    try{
+      if(typeof window.htListCloudUsers === 'function'){
+        window.htListCloudUsers().then(function(list){
+          if(!list || !list.length) return;
+          var db = authLoadSafe();
+          var n = 0;
+          list.forEach(function(u){
+            if(!u || !u.email) return;
+            var email = String(u.email).toLowerCase();
+            if(!db.users[email]){
+              db.users[email] = {
+                email: email, passHash: u.passHash || '',
+                createdAt: u.createdAt || now(), lastLogin: u.lastLogin || null,
+                paidUntil: u.paidUntil || null, blocked: !!u.blocked,
+                profile: u.profile || (u.name ? {name:u.name} : null),
+                academyId: u.academyId || null, fromSelfRegister: !!u.fromSelfRegister
+              };
+              n++;
+            }
+          });
+          if(n){ authSaveSafe(db); syncAuthToGm(); try{ if(window.htGmReload) window.htGmReload(); }catch(e){} }
+        }).catch(function(){});
+      }
+    }catch(e){}
+    return a + b;
+  }
+  window.htSyncBothPanels = syncBothPanels;
+
+  function patchAuthSave(){
+    if(typeof window.authSave === 'function' && !window.authSave.__htV54){
+      var prev = window.authSave;
+      window.authSave = function(db){
+        var r = prev.apply(this, arguments);
+        setTimeout(function(){ try{ syncAuthToGm(); }catch(e){} }, 50);
+        return r;
+      };
+      window.authSave.__htV54 = true;
+    }
+  }
+  function patchRenderAdmin(){
+    if(typeof window.renderAdmin === 'function' && !window.renderAdmin.__htV54){
+      var prev = window.renderAdmin;
+      window.renderAdmin = function(){
+        try{ syncGmToAuth(); }catch(e){}
+        var r = prev.apply(this, arguments);
+        setTimeout(function(){ try{ syncAuthToGm(); }catch(e){} }, 100);
+        return r;
+      };
+      window.renderAdmin.__htV54 = true;
+    }
+  }
+  function patchRegisterLogin(){
+    if(typeof window.doRegister === 'function' && !window.doRegister.__htV54){
+      var prevR = window.doRegister;
+      window.doRegister = function(){
+        var ret = prevR.apply(this, arguments);
+        setTimeout(function(){ try{ syncBothPanels(); }catch(e){} }, 200);
+        return ret;
+      };
+      window.doRegister.__htV54 = true;
+    }
+    if(typeof window.doLogin === 'function' && !window.doLogin.__htV54){
+      var prevL = window.doLogin;
+      window.doLogin = function(){
+        var ret = prevL.apply(this, arguments);
+        setTimeout(function(){ try{ syncBothPanels(); }catch(e){} }, 200);
+        return ret;
+      };
+      window.doLogin.__htV54 = true;
+    }
+  }
+
+  function killBlockingOverlays(){
+    if(!gmIsOpen()) return;
+    ['restOverlay','celebrate','dayCelebrate','monthEndModal','htShareGumOverlay','htShareCamEvoStyle','htShareCamOverlay','htEvoCamOverlay','htCamV44','htEvoOnlyCamOverlay','htCatOverlay','htAccessDesk','htAccessApiPanel'].forEach(function(id){
+      try{
+        var el = document.getElementById(id);
+        if(!el) return;
+        el.classList.remove('show');
+        el.style.display = 'none';
+        el.style.pointerEvents = 'none';
+        el.style.visibility = 'hidden';
+        el.style.opacity = '0';
+        el.style.zIndex = '-1';
+      }catch(e){}
+    });
+  }
+
+  function forceGmClickable(){
+    var gm = document.getElementById('gmRoot');
+    if(!gm) return;
+    if(!gm.classList.contains('show')){
+      try{ document.body.classList.remove('ht-gm-open'); }catch(e){}
+      return;
+    }
+    try{
+      document.body.classList.add('ht-gm-open');
+      gm.style.display = 'block';
+      gm.style.visibility = 'visible';
+      gm.style.opacity = '1';
+      gm.style.pointerEvents = 'auto';
+      gm.style.zIndex = '2147483000';
+      var nodes = gm.querySelectorAll('button, a, input, select, textarea, .gmBtn, .gmNav, .gmCard, .gmItem, .gmIn, [onclick]');
+      for(var i=0;i<nodes.length;i++){
+        nodes[i].style.pointerEvents = 'auto';
+        nodes[i].style.touchAction = 'manipulation';
+      }
+      var bottom = document.getElementById('bottom');
+      if(bottom){ bottom.style.display = 'none'; bottom.style.pointerEvents = 'none'; }
+      document.querySelectorAll('.screen').forEach(function(s){ s.style.pointerEvents = 'none'; });
+    }catch(e){}
+    killBlockingOverlays();
+  }
+
+  function injectGmProtectCss(){
+    if(document.getElementById('htV54GmCss')) return;
+    var st = document.createElement('style');
+    st.id = 'htV54GmCss';
+    st.textContent =
+      'body.ht-gm-open #bottom{display:none!important;pointer-events:none!important;z-index:-1!important;}' +
+      'body.ht-gm-open .screen{pointer-events:none!important;}' +
+      'body.ht-gm-open #gmRoot.show{display:block!important;visibility:visible!important;opacity:1!important;pointer-events:auto!important;z-index:2147483000!important;}' +
+      'body.ht-gm-open #gmRoot.show, body.ht-gm-open #gmRoot.show *{pointer-events:auto!important;}' +
+      'body.ht-gm-open #gmRoot.show button, body.ht-gm-open #gmRoot.show .gmBtn,' +
+      'body.ht-gm-open #gmRoot.show input, body.ht-gm-open #gmRoot.show select,' +
+      'body.ht-gm-open #gmRoot.show a, body.ht-gm-open #gmRoot.show .gmNav{pointer-events:auto!important;touch-action:manipulation!important;}' +
+      'body.ht-gm-open #restOverlay:not(.show), body.ht-gm-open #celebrate:not(.show),' +
+      'body.ht-gm-open #dayCelebrate:not(.show), body.ht-gm-open #monthEndModal:not(.show){display:none!important;pointer-events:none!important;z-index:-1!important;}';
+    document.head.appendChild(st);
+  }
+
+  function watchGm(){
+    var gm = document.getElementById('gmRoot');
+    if(!gm){ setTimeout(watchGm, 400); return; }
+    if(gm.__htV54Obs) return;
+    gm.__htV54Obs = true;
+    new MutationObserver(function(){
+      forceGmClickable();
+      if(gmIsOpen()) setTimeout(function(){ try{ syncBothPanels(); }catch(e){} }, 150);
+    }).observe(gm, { attributes:true, attributeFilter:['class','style'] });
+  }
+
+  function guardUnlockers(){
+    ['htUiUnlock','htForceUnlock','softUnlock','fullUnlock'].forEach(function(name){
+      try{
+        if(typeof window[name] !== 'function' || window[name].__htV54Guard) return;
+        var prev = window[name];
+        window[name] = function(){
+          if(gmIsOpen()){ forceGmClickable(); return true; }
+          return prev.apply(this, arguments);
+        };
+        window[name].__htV54Guard = true;
+      }catch(e){}
+    });
+  }
+
+  function patchOpen(){
+    ['htOpenMasterAccess','htOpenAcademiaAccess'].forEach(function(name){
+      if(typeof window[name] !== 'function' || window[name].__htV54) return;
+      var prev = window[name];
+      window[name] = function(){
+        try{ syncBothPanels(); }catch(e){}
+        var r = prev.apply(this, arguments);
+        setTimeout(forceGmClickable, 50);
+        setTimeout(forceGmClickable, 200);
+        setTimeout(function(){ try{ syncBothPanels(); if(window.htGmReload) window.htGmReload(); }catch(e){} }, 400);
+        return r;
+      };
+      window[name].__htV54 = true;
+    });
+  }
+
+  function boot(){
+    injectGmProtectCss();
+    patchAuthSave();
+    patchRenderAdmin();
+    patchRegisterLogin();
+    patchOpen();
+    guardUnlockers();
+    watchGm();
+    try{ syncBothPanels(); }catch(e){}
+    log('sync 2 painéis + anti-freeze Master ativo');
+  }
+
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot, 300); });
+  } else {
+    setTimeout(boot, 300);
+  }
+  setTimeout(boot, 1500);
+
+  setInterval(function(){
+    try{
+      patchAuthSave(); patchRenderAdmin(); patchOpen(); guardUnlockers();
+      if(gmIsOpen()) forceGmClickable();
+    }catch(e){}
+  }, 2000);
+
+  setInterval(function(){
+    try{ if(gmIsOpen()) syncBothPanels(); }catch(e){}
+  }, 8000);
 })();
 </script>
 
