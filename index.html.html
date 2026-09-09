@@ -31167,5 +31167,384 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
 })();
 </script>
 
+<!-- ===== HT FIX V54 — SYNC 2 PAINÉIS + ANTI-TRAVAMENTO MASTER ===== -->
+<script id="htFixV54SyncPanelsAntiFreeze">
+(function(){
+  'use strict';
+  var LOG = '[HT V54]';
+  function log(){ try{ console.log.apply(console, [LOG].concat([].slice.call(arguments))); }catch(e){} }
+  function now(){ return Date.now(); }
+  function OPEN_ID(){ return 'OPEN_LIVRE'; }
+
+  function gmIsOpen(){
+    try{
+      var gm = document.getElementById('gmRoot');
+      return !!(gm && gm.classList.contains('show'));
+    }catch(e){ return false; }
+  }
+
+  function authLoadSafe(){
+    try{
+      if(typeof authLoad === 'function') return authLoad() || {users:{}};
+      return JSON.parse(localStorage.getItem('heltonAuthV1')||'{"users":{}}');
+    }catch(e){ return {users:{}}; }
+  }
+  function authSaveSafe(db){
+    try{
+      if(typeof authSave === 'function'){ authSave(db); return; }
+      localStorage.setItem('heltonAuthV1', JSON.stringify(db||{users:{}}));
+    }catch(e){}
+  }
+  function gmLoad(){
+    try{ return JSON.parse(localStorage.getItem('gymmasterFullV7')||'{}')||{}; }catch(e){ return {}; }
+  }
+  function gmSave(g){
+    try{ localStorage.setItem('gymmasterFullV7', JSON.stringify(g||{})); }catch(e){}
+  }
+
+  function ensureOpenAcademy(g){
+    g = g || gmLoad();
+    g.academies = g.academies || {};
+    g.accounts = g.accounts || {};
+    var OPEN = OPEN_ID();
+    if(!g.academies[OPEN]){
+      g.academies[OPEN] = {
+        academyId: OPEN, name: 'Acesso Livre (sem academia)', inviteCode: 'LIVRE',
+        codigoAcademia: 'LIVRE', status: 'active', studentLimit: 99999, planValue: 0,
+        responsible: 'Sistema', createdAt: now(), admins: {}, students: {}, payments: {}, isOpenGroup: true
+      };
+    }
+    return g;
+  }
+
+  function syncAuthToGm(){
+    var changed = 0;
+    try{
+      var db = authLoadSafe();
+      var users = (db && db.users) || {};
+      var g = ensureOpenAcademy(gmLoad());
+      Object.keys(users).forEach(function(email){
+        email = String(email||'').trim().toLowerCase();
+        if(!email || email.indexOf('@')<0) return;
+        var u = users[email];
+        if(!u) return;
+        if(u.role === 'MASTER' || u.role === 'Admin') return;
+        var aid = String(u.academyId || u.academiaId || '').trim();
+        if(!aid || !g.academies[aid]) aid = OPEN_ID();
+        var aca = g.academies[aid];
+        if(!aca) return;
+        aca.students = aca.students || {};
+        var existingSid = null;
+        Object.keys(aca.students).forEach(function(sid){
+          var st = aca.students[sid];
+          if(st && String(st.email||'').trim().toLowerCase() === email) existingSid = sid;
+        });
+        if(!existingSid && g.accounts[email] && g.accounts[email].studentId && aca.students[g.accounts[email].studentId]){
+          existingSid = g.accounts[email].studentId;
+        }
+        var name = (u.profile && u.profile.name) || u.name || '';
+        var sid = existingSid || (g.accounts[email] && g.accounts[email].studentId) || ('S' + now().toString(36).toUpperCase() + Math.random().toString(36).slice(2,4).toUpperCase());
+        if(!aca.students[sid]){
+          aca.students[sid] = {
+            studentId: sid, name: name, email: email, cpf: u.cpf || '',
+            planName: 'Mensal', value: 0, dueDate: '',
+            paymentStatus: (Number(u.paidUntil||0) > now()) ? 'paid' : 'pending',
+            accessStatus: u.blocked ? 'blocked' : 'active',
+            accessType: (aid === OPEN_ID() ? 'open' : 'academy'),
+            passHash: u.passHash || '', usingApp: true,
+            lastAccess: u.lastLogin || u.updatedAt || now(),
+            createdAt: u.createdAt || now(),
+            fromSelfRegister: !!(u.fromSelfRegister || !u.academyId)
+          };
+          changed++;
+        } else {
+          var st = aca.students[sid];
+          if(name && st.name !== name){ st.name = name; changed++; }
+          if(u.passHash && !st.passHash){ st.passHash = u.passHash; changed++; }
+          var wantStatus = u.blocked ? 'blocked' : 'active';
+          if(st.accessStatus !== wantStatus){ st.accessStatus = wantStatus; changed++; }
+          if(Number(u.paidUntil||0) > now()) st.paymentStatus = 'paid';
+          st.usingApp = true;
+          st.lastAccess = u.lastLogin || st.lastAccess || now();
+        }
+        if(!g.accounts[email]){
+          g.accounts[email] = {
+            role: (aid === OPEN_ID() ? 'SELF_REGISTERED' : 'STUDENT'),
+            email: email, name: name, academyId: aid, studentId: sid,
+            createdAt: u.createdAt || now(),
+            fromSelfRegister: !!(u.fromSelfRegister || aid === OPEN_ID()),
+            passHash: u.passHash || ''
+          };
+          changed++;
+        } else {
+          var a = g.accounts[email];
+          if(!a.academyId){ a.academyId = aid; changed++; }
+          if(!a.studentId){ a.studentId = sid; changed++; }
+          if(name && !a.name){ a.name = name; changed++; }
+          if(u.passHash && !a.passHash){ a.passHash = u.passHash; changed++; }
+        }
+      });
+      if(changed){
+        gmSave(g);
+        try{ if(window.htGmReload) window.htGmReload(); }catch(e){}
+      }
+      log('auth→gm', changed);
+    }catch(e){ log('auth→gm fail', e); }
+    return changed;
+  }
+
+  function syncGmToAuth(){
+    var changed = 0;
+    try{
+      var g = gmLoad();
+      var db = authLoadSafe();
+      db.users = db.users || {};
+      Object.keys(g.academies || {}).forEach(function(aid){
+        var aca = g.academies[aid];
+        if(!aca || !aca.students) return;
+        Object.keys(aca.students).forEach(function(sid){
+          var st = aca.students[sid];
+          if(!st) return;
+          var email = String(st.email||'').trim().toLowerCase();
+          if(!email || email.indexOf('@')<0) return;
+          var u = db.users[email];
+          if(!u){
+            db.users[email] = {
+              email: email, passHash: st.passHash || '',
+              createdAt: st.createdAt || now(), lastLogin: st.lastAccess || null,
+              paidUntil: null, blocked: String(st.accessStatus||'') === 'blocked',
+              profile: st.name ? { name: st.name } : null,
+              role: 'STUDENT', academyId: aid, studentId: sid, cpf: st.cpf || null,
+              fromSelfRegister: !!st.fromSelfRegister, fromGymMaster: true
+            };
+            changed++;
+          } else {
+            if(st.passHash && !u.passHash){ u.passHash = st.passHash; changed++; }
+            if(st.name && (!u.profile || !u.profile.name)){
+              u.profile = u.profile || {}; u.profile.name = st.name; changed++;
+            }
+            if(!u.academyId){ u.academyId = aid; changed++; }
+            if(!u.studentId){ u.studentId = sid; changed++; }
+            var blocked = String(st.accessStatus||'') === 'blocked';
+            if(!!u.blocked !== blocked){ u.blocked = blocked; changed++; }
+          }
+        });
+      });
+      if(changed){
+        authSaveSafe(db);
+        try{ if(typeof renderAdmin === 'function') renderAdmin(); }catch(e){}
+      }
+      log('gm→auth', changed);
+    }catch(e){ log('gm→auth fail', e); }
+    return changed;
+  }
+
+  function syncBothPanels(){
+    var a = syncAuthToGm();
+    var b = syncGmToAuth();
+    try{
+      if(typeof window.htListCloudUsers === 'function'){
+        window.htListCloudUsers().then(function(list){
+          if(!list || !list.length) return;
+          var db = authLoadSafe();
+          var n = 0;
+          list.forEach(function(u){
+            if(!u || !u.email) return;
+            var email = String(u.email).toLowerCase();
+            if(!db.users[email]){
+              db.users[email] = {
+                email: email, passHash: u.passHash || '',
+                createdAt: u.createdAt || now(), lastLogin: u.lastLogin || null,
+                paidUntil: u.paidUntil || null, blocked: !!u.blocked,
+                profile: u.profile || (u.name ? {name:u.name} : null),
+                academyId: u.academyId || null, fromSelfRegister: !!u.fromSelfRegister
+              };
+              n++;
+            }
+          });
+          if(n){ authSaveSafe(db); syncAuthToGm(); try{ if(window.htGmReload) window.htGmReload(); }catch(e){} }
+        }).catch(function(){});
+      }
+    }catch(e){}
+    return a + b;
+  }
+  window.htSyncBothPanels = syncBothPanels;
+
+  function patchAuthSave(){
+    if(typeof window.authSave === 'function' && !window.authSave.__htV54){
+      var prev = window.authSave;
+      window.authSave = function(db){
+        var r = prev.apply(this, arguments);
+        setTimeout(function(){ try{ syncAuthToGm(); }catch(e){} }, 50);
+        return r;
+      };
+      window.authSave.__htV54 = true;
+    }
+  }
+  function patchRenderAdmin(){
+    if(typeof window.renderAdmin === 'function' && !window.renderAdmin.__htV54){
+      var prev = window.renderAdmin;
+      window.renderAdmin = function(){
+        try{ syncGmToAuth(); }catch(e){}
+        var r = prev.apply(this, arguments);
+        setTimeout(function(){ try{ syncAuthToGm(); }catch(e){} }, 100);
+        return r;
+      };
+      window.renderAdmin.__htV54 = true;
+    }
+  }
+  function patchRegisterLogin(){
+    if(typeof window.doRegister === 'function' && !window.doRegister.__htV54){
+      var prevR = window.doRegister;
+      window.doRegister = function(){
+        var ret = prevR.apply(this, arguments);
+        setTimeout(function(){ try{ syncBothPanels(); }catch(e){} }, 200);
+        return ret;
+      };
+      window.doRegister.__htV54 = true;
+    }
+    if(typeof window.doLogin === 'function' && !window.doLogin.__htV54){
+      var prevL = window.doLogin;
+      window.doLogin = function(){
+        var ret = prevL.apply(this, arguments);
+        setTimeout(function(){ try{ syncBothPanels(); }catch(e){} }, 200);
+        return ret;
+      };
+      window.doLogin.__htV54 = true;
+    }
+  }
+
+  function killBlockingOverlays(){
+    if(!gmIsOpen()) return;
+    ['restOverlay','celebrate','dayCelebrate','monthEndModal','htShareGumOverlay','htShareCamEvoStyle','htShareCamOverlay','htEvoCamOverlay','htCamV44','htEvoOnlyCamOverlay','htCatOverlay','htAccessDesk','htAccessApiPanel'].forEach(function(id){
+      try{
+        var el = document.getElementById(id);
+        if(!el) return;
+        el.classList.remove('show');
+        el.style.display = 'none';
+        el.style.pointerEvents = 'none';
+        el.style.visibility = 'hidden';
+        el.style.opacity = '0';
+        el.style.zIndex = '-1';
+      }catch(e){}
+    });
+  }
+
+  function forceGmClickable(){
+    var gm = document.getElementById('gmRoot');
+    if(!gm) return;
+    if(!gm.classList.contains('show')){
+      try{ document.body.classList.remove('ht-gm-open'); }catch(e){}
+      return;
+    }
+    try{
+      document.body.classList.add('ht-gm-open');
+      gm.style.display = 'block';
+      gm.style.visibility = 'visible';
+      gm.style.opacity = '1';
+      gm.style.pointerEvents = 'auto';
+      gm.style.zIndex = '2147483000';
+      var nodes = gm.querySelectorAll('button, a, input, select, textarea, .gmBtn, .gmNav, .gmCard, .gmItem, .gmIn, [onclick]');
+      for(var i=0;i<nodes.length;i++){
+        nodes[i].style.pointerEvents = 'auto';
+        nodes[i].style.touchAction = 'manipulation';
+      }
+      var bottom = document.getElementById('bottom');
+      if(bottom){ bottom.style.display = 'none'; bottom.style.pointerEvents = 'none'; }
+      document.querySelectorAll('.screen').forEach(function(s){ s.style.pointerEvents = 'none'; });
+    }catch(e){}
+    killBlockingOverlays();
+  }
+
+  function injectGmProtectCss(){
+    if(document.getElementById('htV54GmCss')) return;
+    var st = document.createElement('style');
+    st.id = 'htV54GmCss';
+    st.textContent =
+      'body.ht-gm-open #bottom{display:none!important;pointer-events:none!important;z-index:-1!important;}' +
+      'body.ht-gm-open .screen{pointer-events:none!important;}' +
+      'body.ht-gm-open #gmRoot.show{display:block!important;visibility:visible!important;opacity:1!important;pointer-events:auto!important;z-index:2147483000!important;}' +
+      'body.ht-gm-open #gmRoot.show, body.ht-gm-open #gmRoot.show *{pointer-events:auto!important;}' +
+      'body.ht-gm-open #gmRoot.show button, body.ht-gm-open #gmRoot.show .gmBtn,' +
+      'body.ht-gm-open #gmRoot.show input, body.ht-gm-open #gmRoot.show select,' +
+      'body.ht-gm-open #gmRoot.show a, body.ht-gm-open #gmRoot.show .gmNav{pointer-events:auto!important;touch-action:manipulation!important;}' +
+      'body.ht-gm-open #restOverlay:not(.show), body.ht-gm-open #celebrate:not(.show),' +
+      'body.ht-gm-open #dayCelebrate:not(.show), body.ht-gm-open #monthEndModal:not(.show){display:none!important;pointer-events:none!important;z-index:-1!important;}';
+    document.head.appendChild(st);
+  }
+
+  function watchGm(){
+    var gm = document.getElementById('gmRoot');
+    if(!gm){ setTimeout(watchGm, 400); return; }
+    if(gm.__htV54Obs) return;
+    gm.__htV54Obs = true;
+    new MutationObserver(function(){
+      forceGmClickable();
+      if(gmIsOpen()) setTimeout(function(){ try{ syncBothPanels(); }catch(e){} }, 150);
+    }).observe(gm, { attributes:true, attributeFilter:['class','style'] });
+  }
+
+  function guardUnlockers(){
+    ['htUiUnlock','htForceUnlock','softUnlock','fullUnlock'].forEach(function(name){
+      try{
+        if(typeof window[name] !== 'function' || window[name].__htV54Guard) return;
+        var prev = window[name];
+        window[name] = function(){
+          if(gmIsOpen()){ forceGmClickable(); return true; }
+          return prev.apply(this, arguments);
+        };
+        window[name].__htV54Guard = true;
+      }catch(e){}
+    });
+  }
+
+  function patchOpen(){
+    ['htOpenMasterAccess','htOpenAcademiaAccess'].forEach(function(name){
+      if(typeof window[name] !== 'function' || window[name].__htV54) return;
+      var prev = window[name];
+      window[name] = function(){
+        try{ syncBothPanels(); }catch(e){}
+        var r = prev.apply(this, arguments);
+        setTimeout(forceGmClickable, 50);
+        setTimeout(forceGmClickable, 200);
+        setTimeout(function(){ try{ syncBothPanels(); if(window.htGmReload) window.htGmReload(); }catch(e){} }, 400);
+        return r;
+      };
+      window[name].__htV54 = true;
+    });
+  }
+
+  function boot(){
+    injectGmProtectCss();
+    patchAuthSave();
+    patchRenderAdmin();
+    patchRegisterLogin();
+    patchOpen();
+    guardUnlockers();
+    watchGm();
+    try{ syncBothPanels(); }catch(e){}
+    log('sync 2 painéis + anti-freeze Master ativo');
+  }
+
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot, 300); });
+  } else {
+    setTimeout(boot, 300);
+  }
+  setTimeout(boot, 1500);
+
+  setInterval(function(){
+    try{
+      patchAuthSave(); patchRenderAdmin(); patchOpen(); guardUnlockers();
+      if(gmIsOpen()) forceGmClickable();
+    }catch(e){}
+  }, 2000);
+
+  setInterval(function(){
+    try{ if(gmIsOpen()) syncBothPanels(); }catch(e){}
+  }, 8000);
+})();
+</script>
+
 </body>
 </html>
