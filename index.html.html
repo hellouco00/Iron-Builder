@@ -2458,13 +2458,54 @@ function renderRoutine(){
  box.innerHTML=['breakfast','lunch','snack','dinner'].map(type=>{const x=getMealTotals(type);return `<div class="routineRow"><div class="routineTime">${times[type]}</div><div class="routineMeal"><b>${MEAL_LABELS[type]}</b><small>${x.count?Math.round(x.k)+' kcal selecionadas':'Escolha os alimentos acima'}</small></div><div class="routineKcal">${x.count?Math.round(x.k)+' kcal':'—'}</div></div>`}).join('');
 }
 function renderNutrition(){
- const p=state.profile||{name:'Atleta',age:34,height:172,weight:75,gender:'masculino'};document.getElementById('nutriHelloName').textContent=(p.name||'Atleta').split(' ')[0];document.getElementById('nutriUserName').textContent=p.name||'Atleta';document.getElementById('nutriUserMeta').textContent=`${p.age||'—'} anos • ${((p.height||172)/100).toFixed(2).replace('.',',')} m • ${p.weight||75} kg`;
- const t=calcNutritionTargets();document.getElementById('nutriKcal').textContent=t.kcal+' kcal';document.getElementById('nutriProtein').textContent=t.protein+'g';document.getElementById('nutriCarbs').textContent=t.carbs+'g';document.getElementById('nutriFat').textContent=t.fat+'g';
- const labels={fat:'PERDA DE GORDURA',mass:'GANHO DE MASSA',well:'BEM-ESTAR'};document.getElementById('nutriGoalPill').textContent=labels[nutritionGoal];document.getElementById('selectedGoal').textContent='✓ Objetivo selecionado: '+labels[nutritionGoal];['fat','mass','well'].forEach(g=>document.getElementById('goal'+(g==='fat'?'Fat':g==='mass'?'Mass':'Well')).classList.toggle('active',nutritionGoal===g));
- const total=Number(state.nutrition?.waterConsumed)||0,liters=total/1000,target=t.water;document.getElementById('waterTotal').textContent=liters.toFixed(1).replace('.',',')+' / '+target.toFixed(1).replace('.',',')+' L';document.getElementById('waterFill').style.width=Math.min(100,total/(target*1000)*100)+'%';document.getElementById('waterText').textContent=total>=target*1000?'Meta diária atingida! 💧':'Faltam '+Math.max(0,target-liters).toFixed(1).replace('.',',')+' L • estimativa pelo seu peso e objetivo.';
+ const p=state.profile||{name:'Atleta',age:34,height:172,weight:75,gender:'masculino'};
+ let hShow=Number(p.height)||172; if(hShow>0 && hShow<3) hShow=hShow*100;
+ document.getElementById('nutriHelloName').textContent=(p.name||'Atleta').split(' ')[0];
+ document.getElementById('nutriUserName').textContent=p.name||'Atleta';
+ document.getElementById('nutriUserMeta').textContent=`${p.age||'—'} anos • ${(hShow/100).toFixed(2).replace('.',',')} m • ${p.weight||75} kg`;
+ const t=calcNutritionTargets();
+ document.getElementById('nutriKcal').textContent=t.kcal+' kcal';
+ document.getElementById('nutriProtein').textContent=t.protein+'g';
+ document.getElementById('nutriCarbs').textContent=t.carbs+'g';
+ document.getElementById('nutriFat').textContent=t.fat+'g';
+ const labels={fat:'PERDA DE GORDURA',mass:'GANHO DE MASSA',well:'BEM-ESTAR'};
+ const goalNow=(typeof nutritionGoal!=='undefined'&&nutritionGoal)?nutritionGoal:((state&&state.nutrition&&state.nutrition.goal)||'well');
+ document.getElementById('nutriGoalPill').textContent=labels[goalNow]||labels.well;
+ document.getElementById('selectedGoal').textContent='✓ Objetivo selecionado: '+(labels[goalNow]||labels.well);
+ ['fat','mass','well'].forEach(g=>document.getElementById('goal'+(g==='fat'?'Fat':g==='mass'?'Mass':'Well')).classList.toggle('active',goalNow===g));
+ const total=Number(state.nutrition?.waterConsumed)||0,liters=total/1000,target=t.water;
+ document.getElementById('waterTotal').textContent=liters.toFixed(1).replace('.',',')+' / '+target.toFixed(1).replace('.',',')+' L';
+ document.getElementById('waterFill').style.width=Math.min(100,total/(target*1000)*100)+'%';
+ document.getElementById('waterText').textContent=total>=target*1000?'Meta diária atingida! 💧':'Faltam '+Math.max(0,target-liters).toFixed(1).replace('.',',')+' L • estimativa pelo seu peso e objetivo.';
  const daily=getDailyFoodTotals(), diff=Math.round(daily.k-t.kcal), kgWeek=Math.abs(diff)*7/7700, direction=diff<0?'perda':diff>0?'ganho':'manutenção';
- const dailyEl=document.getElementById('dailyFoodSummary');if(dailyEl)dailyEl.innerHTML=`<div><b>${Math.round(daily.k)} kcal</b><span>selecionadas no dia</span></div><div><b>${diff>0?'+':''}${diff} kcal</b><span>vs. meta de ${t.kcal} kcal</span></div><div><b>${direction==='manutenção'?'≈ 0':(direction==='perda'?'−':'＋')+kgWeek.toFixed(2).replace('.',',')+' kg/semana'}</b><span>estimativa teórica</span></div>`;
- const macroEl=document.getElementById('dailyMacroSummary');if(macroEl)macroEl.textContent=`P ${Math.round(daily.p)}g • C ${Math.round(daily.c)}g • G ${Math.round(daily.f)}g`;
+ const dailyEl=document.getElementById('dailyFoodSummary');
+ if(dailyEl)dailyEl.innerHTML=`<div><b>${Math.round(daily.k)} kcal</b><span>selecionadas no dia</span></div><div><b>${diff>0?'+':''}${diff} kcal</b><span>vs. meta de ${t.kcal} kcal</span></div><div><b>${direction==='manutenção'?'≈ 0':(direction==='perda'?'−':'＋')+kgWeek.toFixed(2).replace('.',',')+' kg/semana'}</b><span>estimativa teórica</span></div>`;
+ const macroEl=document.getElementById('dailyMacroSummary');
+ if(macroEl)macroEl.textContent=`P ${Math.round(daily.p)}g • C ${Math.round(daily.c)}g • G ${Math.round(daily.f)}g`;
+ /* Card de metabolismo + checagem macros = kcal */
+ try{
+   var host=document.querySelector('.nutriTargets');
+   if(host){
+     var box=document.getElementById('htNutriMetaBox');
+     if(!box){ box=document.createElement('div'); box.id='htNutriMetaBox'; host.appendChild(box); }
+     box.style.cssText='margin-top:10px;padding:10px;border-radius:12px;background:#050c16;border:1px solid #29405d;font-size:11px;line-height:1.5;color:#c5d3e3';
+     var goalLabel=goalNow==='mass'?'Ganho de massa (superávit)':goalNow==='fat'?'Perda de gordura (déficit)':'Bem-estar (manutenção)';
+     var extra=goalNow==='mass'
+       ?('Superávit: <b style="color:#20e083">+'+(t.surplus||250)+' kcal</b> acima do gasto diário.')
+       :(goalNow==='fat'
+         ?('Déficit: <b style="color:#ffbd3e">−'+(t.deficit||400)+' kcal</b> em relação ao gasto diário.')
+         :'Meta alinhada ao gasto diário estimado.');
+     var mk=t.macroKcal!=null?t.macroKcal:(t.protein*4+t.carbs*4+t.fat*9);
+     box.innerHTML=
+       '<div style="font-weight:900;color:#56b5ff;margin-bottom:6px">📊 Metabolismo e conferência</div>'+
+       '<div>TMB (basal): <b style="color:#fff">'+(t.bmr||'—')+' kcal</b></div>'+
+       '<div>Gasto diário estimado: <b style="color:#fff">'+(t.tdee||t.maintenance||'—')+' kcal</b> <span style="color:#8ea0b8">(×1,55 moderado)</span></div>'+
+       '<div>Meta do objetivo: <b style="color:#ffbd3e">'+t.kcal+' kcal</b> · '+goalLabel+'</div>'+
+       '<div style="margin-top:4px">'+extra+'</div>'+
+       '<div style="margin-top:6px;padding-top:6px;border-top:1px solid #243650">Macros: P '+t.protein+'g ×4 + C '+t.carbs+'g ×4 + G '+t.fat+'g ×9 = <b style="color:#20e083">'+mk+' kcal</b> (fecha com a meta)</div>'+
+       '<div style="margin-top:6px;font-size:9px;color:#71839a">TMB Mifflin-St Jeor. Altura em cm (ou metros convertidos). Ajuste perfil se os números mudarem.</div>';
+   }
+ }catch(eMeta){}
  renderMealOptions();renderRoutine();
 }
 
@@ -16559,13 +16600,40 @@ function getSess() {
   function screenMasterDash() {
     var sess = getSess();
     if (!sess || sess.role !== 'MASTER') return go(screenMasterLogin);
+    /* Sync configuração ↔ Master ANTES de desenhar */
+    try{ if(window.htSyncBothPanels) window.htSyncBothPanels(); }catch(eSync){}
+    try{ if(window.htGmReload) window.htGmReload(); }catch(eR){}
     var d = masterDashData();
+    /* Lista contas do Acesso Livre (vindas do painel configuração / criar conta) */
+    var freeList = [];
+    try{
+      var gFree = load();
+      var openA = gFree.academies && gFree.academies['OPEN_LIVRE'];
+      if(openA && openA.students){
+        freeList = Object.values(openA.students);
+      }
+    }catch(eF){}
+    var freeHtml = freeList.length
+      ? freeList.map(function(st){
+          return '<div style="padding:8px 0;border-top:1px solid #1a2a3a;font-size:12px">' +
+            '<b style="color:#fff">' + esc(st.name || 'Sem nome') + '</b><br/>' +
+            '<span style="color:#8ea0b8">' + esc(st.email || '') + '</span></div>';
+        }).join('')
+      : '<p style="font-size:11px;color:#888;margin:0">Nenhuma conta em Acesso Livre ainda. Contas do painel Configuração / Criar conta aparecem aqui após sincronizar.</p>';
     openUI();
     root().innerHTML =
       '<div class="gmApp">' +
       '<div class="gmTop"><div><h1>Painel Master</h1><div class="sub">Criador · todas as unidades</div></div>' +
       '<button class="gmIcon" id="gmOut" title="Sair">⎋</button></div>' +
       '<div class="gmPad">' +
+      '<div class="gmCard" style="margin-bottom:12px;border-color:#168cff">' +
+      '<div style="font-weight:900;margin-bottom:6px">🔄 Contas do app (Configuração ↔ Master)</div>' +
+      '<p style="font-size:11px;color:#888;margin:0 0 10px;line-height:1.4">Alunos que se cadastraram pelo app (sem academia) ficam em <b style="color:#ffbd3e">Acesso Livre</b>. Toque em sincronizar se ainda não aparecerem.</p>' +
+      '<button type="button" class="gmBtn" id="gmSyncAuthNow" style="background:linear-gradient(135deg,#168cff,#0a67d3);margin-bottom:10px">🔄 Sincronizar contas agora</button>' +
+      '<div style="font-size:11px;color:#56b5ff;font-weight:800;margin-bottom:4px">Acesso Livre · ' + freeList.length + ' conta(s)</div>' +
+      '<div id="gmFreeList">' + freeHtml + '</div>' +
+      '<button type="button" class="gmBtn sm" id="gmOpenLivre" style="margin-top:10px;width:auto">Abrir unidade Acesso Livre →</button>' +
+      '</div>' +
       '<div class="gmGrid2">' +
       '<div class="gmStat red"><div class="l">Unidades</div><div class="v">' + d.units + '</div><div class="h">Total de academias</div></div>' +
       '<div class="gmStat blue"><div class="l">Alunos</div><div class="v">' + d.students + '</div><div class="h">Total cadastrados</div></div>' +
@@ -16618,6 +16686,17 @@ function getSess() {
       '</div></div>';
 
     document.getElementById('gmOut').onclick = function () { clearSess(); if (typeof goAccessScreen === 'function') goAccessScreen(); else closeUI(); toast('Sessão Master encerrada'); };
+        var btnSync = document.getElementById('gmSyncAuthNow');
+    if(btnSync) btnSync.onclick = function(){
+      try{
+        var n = window.htSyncBothPanels ? window.htSyncBothPanels() : 0;
+        try{ if(window.htGmReload) window.htGmReload(); }catch(e){}
+        toast('Sincronizado. Contas da configuração → Acesso Livre.');
+        go(screenMasterDash);
+      }catch(err){ toast('Erro ao sincronizar'); console.error(err); }
+    };
+    var btnLivre = document.getElementById('gmOpenLivre');
+    if(btnLivre) btnLivre.onclick = function(){ go(function(){ screenUnit('OPEN_LIVRE'); }); };
     document.getElementById('gmPersonal').onclick = function () { enterMasterPersonalMode(); };
     if (document.getElementById('gmFrames')) document.getElementById('gmFrames').onclick = function () {
       try { window.GM_FRAME_SCOPE = { type: 'master' }; } catch (e) {}
@@ -27444,12 +27523,29 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
           'Metabolismo basal (TMB): <b style="color:#fff">'+(bmr!=null?bmr+' kcal':'—')+'</b><br>'+
           'Gasto diário estimado: <b style="color:#fff">'+(tdee!=null?tdee+' kcal':'—')+'</b> <span style="color:#8ea0b8;font-size:10px">(atividade moderada ×1,55)</span><br>'+
           'Meta ganho de massa: <b style="color:#20e083">'+(kcalMass!=null?kcalMass+' kcal':'—')+'</b> <span style="color:#8ea0b8;font-size:10px">(+250 superávit)</span><br>'+
-          'Meta emagrecimento: <b style="color:#ffbd3e">'+(kcalCut!=null?kcalCut+' kcal':'—')+'</b> <span style="color:#8ea0b8;font-size:10px">(déficit ~400)</span>'+
+          'Meta emagrecimento: <b style="color:#ffbd3e">'+(kcalCut!=null?kcalCut+' kcal':'—')+'</b> <span style="color:#8ea0b8;font-size:10px">(déficit ~400)</span><br>'+
+          'Meta manutenção: <b style="color:#55c4ff">'+(tdee!=null?tdee+' kcal':'—')+'</b>'+
         '</div>'+
+        (function(){
+          if(!wkg || !tdee) return '';
+          var protG = Math.round(2.0*wkg);
+          var fatG = Math.round(0.8*wkg);
+          var carbMass = Math.round((kcalMass - (protG*4 + fatG*9))/4);
+          var carbCut = Math.round((kcalCut - (protG*4 + fatG*9))/4);
+          var carbMaint = Math.round((tdee - (protG*4 + fatG*9))/4);
+          if(carbMass<0) carbMass=0; if(carbCut<0) carbCut=0; if(carbMaint<0) carbMaint=0;
+          return '<div style="margin-top:10px;padding-top:8px;border-top:1px solid #243650;font-size:11px;color:#c5d3e3;line-height:1.5">'+
+            '<div style="font-weight:900;color:#ffbd3e;margin-bottom:4px">🍽️ Metas de macros (sugeridas)</div>'+
+            '<div>Proteína: <b style="color:#61ef63">'+protG+' g</b> · Gordura: <b style="color:#ff6670">'+fatG+' g</b></div>'+
+            '<div>Carbo (massa): <b>'+carbMass+' g</b> → soma ≈ '+(protG*4+carbMass*4+fatG*9)+' kcal</div>'+
+            '<div>Carbo (emagrecer): <b>'+carbCut+' g</b> → soma ≈ '+(protG*4+carbCut*4+fatG*9)+' kcal</div>'+
+            '<div>Carbo (manutenção): <b>'+carbMaint+' g</b> → soma ≈ '+(protG*4+carbMaint*4+fatG*9)+' kcal</div>'+
+            '</div>';
+        })()+
         (idealWeightLow!=null && idealWeightHigh!=null
           ? '<div style="margin-top:8px;font-size:10px;color:#a8b8ca;line-height:1.4">Faixa de peso estimada para BF fitness (~'+idealBfLow+'–'+idealBfHigh+'%), mantendo massa magra atual: <b style="color:#ffbd3e">'+Math.min(idealWeightLow,idealWeightHigh)+' – '+Math.max(idealWeightLow,idealWeightHigh)+' kg</b></div>'
           : '')+
-        '<div style="margin-top:8px;font-size:9px;color:#71839a;line-height:1.35">TMB pela fórmula Mifflin-St Jeor. Valores são estimativas — use como referência, não prescrição médica.</div>'+
+        '<div style="margin-top:8px;font-size:9px;color:#71839a;line-height:1.35">TMB Mifflin-St Jeor. Macros fecham com as kcal. Valores são estimativas — não substituem orientação profissional.</div>'+
       '</div>';
 
     /* grava no estado e atualiza silhueta */
@@ -31196,10 +31292,28 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
     }catch(e){}
   }
   function gmLoad(){
+    /* Preferir o banco em memória do GymMaster (evita race com save interno) */
+    try{
+      if(typeof window.htGmReload === 'function'){
+        var g0 = window.htGmReload();
+        if(g0 && typeof g0 === 'object') return g0;
+      }
+    }catch(e){}
     try{ return JSON.parse(localStorage.getItem('gymmasterFullV7')||'{}')||{}; }catch(e){ return {}; }
   }
   function gmSave(g){
-    try{ localStorage.setItem('gymmasterFullV7', JSON.stringify(g||{})); }catch(e){}
+    try{
+      /* Se o GymMaster expõe save, mutamos o objeto vivo e salvamos por ele */
+      if(typeof window.htGmSave === 'function' && g){
+        try{ localStorage.setItem('gymmasterFullV7', JSON.stringify(g)); }catch(e1){}
+        try{ window.htGmReload && window.htGmReload(); }catch(e2){}
+        try{ window.htGmSave(); }catch(e3){
+          localStorage.setItem('gymmasterFullV7', JSON.stringify(g||{}));
+        }
+        return;
+      }
+      localStorage.setItem('gymmasterFullV7', JSON.stringify(g||{}));
+    }catch(e){}
   }
 
   function ensureOpenAcademy(g){
@@ -31284,11 +31398,14 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
           if(u.passHash && !a.passHash){ a.passHash = u.passHash; changed++; }
         }
       });
-      if(changed){
+      if(changed || true){
+        /* Sempre persiste o objeto vivo (mesmo 0 alterações garante OPEN_LIVRE) */
+        try{ localStorage.setItem('gymmasterFullV7', JSON.stringify(g)); }catch(eLS){}
         gmSave(g);
         try{ if(window.htGmReload) window.htGmReload(); }catch(e){}
+        try{ if(window.htGmSave) window.htGmSave(); }catch(e){}
       }
-      log('auth→gm', changed);
+      log('auth→gm', changed, 'users auth=', Object.keys(users).length);
     }catch(e){ log('auth→gm fail', e); }
     return changed;
   }
