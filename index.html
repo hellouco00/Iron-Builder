@@ -1001,6 +1001,31 @@ body:has(#authWelcome.active) #bottom {
   user-select:none;
 }
 </style>
+
+<style id="htCelebrateCoachFix">
+#celebrate.show{
+  display:grid !important;
+  visibility:visible !important;
+  opacity:1 !important;
+  pointer-events:auto !important;
+  z-index:80 !important;
+}
+#celebrate.show .celebrateBox{pointer-events:auto !important;}
+#celebrate.show .coachBubble{display:block !important; opacity:1 !important;}
+</style>
+
+<style id="htShareStableCss">
+#dayCelebrate.show, #dayCelebrate.show .dayCelebSheet{
+  transform: none !important;
+  animation: none !important;
+}
+#dayCelebrate .shareFrameArt, #dayCelebrate #sharePhotoPreview{
+  transition: none !important;
+}
+#dayCelebrate .frameStrip, #dayCelebrate .shareCardStage{
+  min-height: 40px;
+}
+</style>
 </head>
 <body>
 <div class="app">
@@ -1742,6 +1767,14 @@ body:has(#authWelcome.active) #bottom {
 <input id="pweight" placeholder="Peso (kg)" type="number"/>
 <input id="pheight" placeholder="Altura (cm)" type="number"/>
 <select id="pgender"><option value="masculino">Masculino</option><option value="feminino">Feminino</option></select>
+<label style="display:block;font-size:11px;color:#8ea0b8;margin:10px 0 5px">Nível de atividade (gasto diário)</label>
+<select id="pactivity">
+  <option value="1.2">Sedentário (pouco ou nenhum exercício) — ×1,2</option>
+  <option value="1.375">Leve (1–3x/semana) — ×1,375</option>
+  <option value="1.55">Moderado (3–5x/semana) — ×1,55</option>
+  <option value="1.725" selected>Ativo (6–7x/semana ou treino intenso) — ×1,725</option>
+  <option value="1.9">Muito ativo (treino pesado 2x/dia / atleta) — ×1,9</option>
+</select>
 <button class="bigBtn" onclick="updateProfile()">Salvar alterações</button>
 <button class="authBtn ghost" onclick="doLogout()" style="margin-top:10px">Sair da conta</button>
 </div>
@@ -2400,8 +2433,11 @@ function calcNutritionTargets(){
  if(height<100 || height>250) height=172;
  const sex=(String(p.gender||'').toLowerCase().indexOf('fem')>=0)?-161:5;
  const bmr=Math.round(10*weight + 6.25*height - 5*age + sex);
- /* Gasto diário estimado: atividade moderada (1.55) */
- const maintenance=Math.round(bmr*1.55);
+ /* Gasto diário: fator de atividade do perfil (padrão ativo 1.725 — treino regular)
+    Sedentário 1.2 | Leve 1.375 | Moderado 1.55 | Ativo 1.725 | Muito ativo 1.9 */
+ let act=Number(p.activity);
+ if(!(act>=1.1 && act<=2.2)) act=1.725;
+ const maintenance=Math.round(bmr*act);
  let kcal=maintenance, proteinKg=1.6;
  const goal=(typeof nutritionGoal!=='undefined' && nutritionGoal) ? nutritionGoal : ((state&&state.nutrition&&state.nutrition.goal)||'well');
  if(goal==='fat'){ kcal=Math.max(Math.round(bmr*1.2), maintenance-400); proteinKg=2.0; }
@@ -2425,6 +2461,7 @@ function calcNutritionTargets(){
    maintenance: maintenance,
    bmr: bmr,
    tdee: maintenance,
+   activityFactor: act,
    surplus: goal==='mass' ? Math.max(0, Math.round(kcal-maintenance)) : 0,
    deficit: goal==='fat' ? Math.max(0, Math.round(maintenance-kcal)) : 0,
    macroKcal: macroKcal,
@@ -2499,7 +2536,7 @@ function renderNutrition(){
      box.innerHTML=
        '<div style="font-weight:900;color:#56b5ff;margin-bottom:6px">📊 Metabolismo e conferência</div>'+
        '<div>TMB (basal): <b style="color:#fff">'+(t.bmr||'—')+' kcal</b></div>'+
-       '<div>Gasto diário estimado: <b style="color:#fff">'+(t.tdee||t.maintenance||'—')+' kcal</b> <span style="color:#8ea0b8">(×1,55 moderado)</span></div>'+
+       '<div>Gasto diário estimado: <b style="color:#fff">'+(t.tdee||t.maintenance||'—')+' kcal</b> <span style="color:#8ea0b8">(conforme atividade no Perfil)</span></div>'+
        '<div>Meta do objetivo: <b style="color:#ffbd3e">'+t.kcal+' kcal</b> · '+goalLabel+'</div>'+
        '<div style="margin-top:4px">'+extra+'</div>'+
        '<div style="margin-top:6px;padding-top:6px;border-top:1px solid #243650">Macros: P '+t.protein+'g ×4 + C '+t.carbs+'g ×4 + G '+t.fat+'g ×9 = <b style="color:#20e083">'+mk+' kcal</b> (fecha com a meta)</div>'+
@@ -3572,7 +3609,10 @@ function updateProfile(){
   if(name && email && name.toLowerCase()===email) name="";
   if(name && name.indexOf("@")>=0) name="";
   if(!name||!age||!weight||!height){ toast("Preencha nome, idade, peso e altura."); return; }
-  state.profile={name:name,age:age,weight:weight,height:height,gender:gender};
+  var act=1.725;
+  try{ var _act=document.getElementById('pactivity'); if(_act){ act=parseFloat(_act.value)||1.725; } }catch(e){}
+  if(!(act>=1.1 && act<=2.2)) act=1.725;
+  state.profile={name:name,age:age,weight:weight,height:height,gender:gender,activity:act};
   try{ save(); }catch(e){}
   if(email){
     try{
@@ -3615,6 +3655,17 @@ function openProfile(){
    pgender:p.gender||"masculino"
  };
  Object.keys(vals).forEach(function(id){const el=document.getElementById(id);if(el)el.value=vals[id]});
+ try{
+   var actSel=document.getElementById('pactivity');
+   if(actSel){
+     var a=Number(p.activity); if(!(a>=1.1&&a<=2.2)) a=1.725;
+     var best='1.725';
+     for(var i=0;i<actSel.options.length;i++){
+       if(Math.abs(parseFloat(actSel.options[i].value)-a)<0.01){ best=actSel.options[i].value; break; }
+     }
+     actSel.value=best;
+   }
+ }catch(e){}
  show("profile")
 }
 function progressKey(day, idx, goal){
@@ -3884,8 +3935,8 @@ function renderHome(){
  const todayDone=days[state.dayOpened]?completed(state.dayOpened):(Object.keys(state.done).filter(k=>k.startsWith((trainingGoal||'mass')+'|'+String(state.dayOpened)+'|')).length);
  document.getElementById("todayDone").textContent=todayDone;
  // Mesma fórmula para "hoje": exercícios de hoje × fatores
- document.getElementById("minutes").textContent=Math.round(todayDone*4.5);
- document.getElementById("kcal").textContent=Math.round(todayDone*(p.weight||75)*0.75);
+ document.getElementById("minutes").textContent=htEstimateWorkoutMinutes(todayDone);
+ document.getElementById("kcal").textContent=htEstimateWorkoutKcal(todayDone, (p.weight||75));
  const streak=finishedDays;
  document.getElementById("streakLabel").textContent=streak+" dias";
  document.getElementById("streakText").textContent=streak?"Muito bom! 🔥":"Comece hoje!";
@@ -4044,6 +4095,32 @@ document.getElementById("sets").addEventListener("input",updateIntensity);
 function htMainCount(){
   return (typeof MAIN_COUNT === 'number' && MAIN_COUNT > 0) ? MAIN_COUNT : 4;
 }
+
+/** Estimativa de kcal no treino de força — fórmula ACSM (igual ao cardio)
+ *  kcal = MET × 3.5 × peso_kg / 200 × minutos
+ *  MET 5.0 ≈ musculação moderada/vigorosa (Compendium of Physical Activities)
+ *  Tempo: ~4,5 min por exercício (séries + descanso), ou minutos informados
+ *  A fórmula antiga (exercícios × peso × 0,75) SUPERESTIMAVA ~2×.
+ */
+function htEstimateWorkoutMinutes(exCount){
+  exCount = Math.max(0, Number(exCount) || 0);
+  return Math.round(exCount * 4.5);
+}
+function htEstimateWorkoutKcal(exCount, weightKg, minutes){
+  try{
+    var w = Number(weightKg);
+    if(!(w > 0) || w < 30 || w > 300) w = 75;
+    var n = Math.max(0, Number(exCount) || 0);
+    var min = (minutes != null && minutes !== '') ? Number(minutes) : htEstimateWorkoutMinutes(n);
+    if(!(min > 0)) min = htEstimateWorkoutMinutes(n);
+    if(min <= 0) return 0;
+    var MET = 5.0; // resistência / musculação
+    return Math.max(0, Math.round(MET * 3.5 * w / 200 * min));
+  }catch(e){ return 0; }
+}
+window.htEstimateWorkoutKcal = htEstimateWorkoutKcal;
+window.htEstimateWorkoutMinutes = htEstimateWorkoutMinutes;
+
 function isDayMainDone(day){
   try{
     var d = days[day];
@@ -4095,12 +4172,43 @@ function completeCurrent(){
     try{ markDayMainDone(currentDay); }catch(eM){}
     try{ recordMonthWorkout(currentDay); }catch(e){}
     try{ renderHome(); }catch(eH2){}
-    try{ window.__htShareAllowed = true; window.__htWeeklyShareActive = false; }catch(eA){}
-    try{ openDayCelebrate(); }catch(eO){ console.warn(eO); }
+    try{
+      window.__htShareAllowed = true;
+      window.__htBlockShareFromEvo = false;
+      window.__htWeeklyShareActive = false;
+    }catch(eA){}
+    // 1) Sempre mostra treinadores primeiro
+    try{ showExerciseCelebrate(); }catch(eC){}
+    // 2) Depois abre compartilhamento (usuário também pode tocar Continuar)
+    function htOpenShareAfterDay(){
+      try{ window.__htShareAllowed = true; }catch(e){}
+      try{
+        // fecha celebração dos coaches para não cobrir o share
+        var cel = document.getElementById('celebrate');
+        if(cel){ cel.classList.remove('show'); cel.style.display='none'; }
+      }catch(e){}
+      try{
+        if(typeof window.openDayCelebrate === 'function') window.openDayCelebrate();
+        else if(typeof openDayCelebrate === 'function') openDayCelebrate();
+      }catch(eO){ console.warn(eO); }
+      try{
+        var dayEl = document.getElementById('dayCelebrate');
+        if(dayEl){
+          dayEl.classList.add('show');
+          dayEl.style.setProperty('display','flex','important');
+          dayEl.style.setProperty('visibility','visible','important');
+          dayEl.style.setProperty('pointer-events','auto','important');
+          dayEl.style.setProperty('opacity','1','important');
+        }
+      }catch(e2){}
+    }
+    setTimeout(htOpenShareAfterDay, 1600);
   } else {
     try{ show('workout'); }catch(eS){}
-    var cel = document.getElementById('celebrate');
-    if(cel) cel.classList.add('show');
+    try{ showExerciseCelebrate(); }catch(eC){
+      var cel = document.getElementById('celebrate');
+      if(cel){ cel.classList.add('show'); cel.style.display='grid'; }
+    }
   }
  }catch(err){
    try{ console.warn(err); alert('Erro ao concluir: '+(err && err.message || err)); }catch(e2){}
@@ -4114,8 +4222,68 @@ function closeCelebrate(){
     cel.classList.remove("show");
     cel.style.display="none";
     cel.style.pointerEvents="none";
+    cel.style.removeProperty('opacity');
+  }catch(e){}
+  // Se o dia (4 principais) já está completo, abre compartilhamento ao fechar os treinadores
+  try{
+    if(typeof isDayMainDone==='function' && typeof currentDay!=='undefined' && isDayMainDone(currentDay)){
+      try{ window.__htShareAllowed = true; window.__htBlockShareFromEvo = false; }catch(eA){}
+      setTimeout(function(){
+        try{
+          if(typeof window.openDayCelebrate==='function') window.openDayCelebrate();
+          else if(typeof openDayCelebrate==='function') openDayCelebrate();
+        }catch(eO){}
+      }, 80);
+    }
   }catch(e){}
 }
+
+/** Mensagens rotativas dos treinadores ao concluir exercício */
+var HT_COACH_MALE = [
+  "Parabéns! 💪<br>Mandou bem!",
+  "Isso aí! 🔥<br>Continua firme!",
+  "Excelente! 🏋️<br>Postura de atleta!",
+  "Boa! 👊<br>Mais um no histórico!",
+  "Força! 💥<br>Você está evoluindo!"
+];
+var HT_COACH_FEMALE = [
+  "Parabéns! 🙌<br>Você conseguiu!",
+  "Arrasou! ✨<br>Orgulho total!",
+  "Isso! 💖<br>Disciplina no nível!",
+  "Top! 🌟<br>Manteve o foco!",
+  "Sensacional! 🎉<br>Segue assim!"
+];
+
+function showExerciseCelebrate(){
+  try{
+    var cel = document.getElementById('celebrate');
+    if(!cel) return;
+    // atualiza balões dos coaches
+    try{
+      var bubbles = cel.querySelectorAll('.coachBubble');
+      if(bubbles[0]) bubbles[0].innerHTML = HT_COACH_MALE[Math.floor(Math.random()*HT_COACH_MALE.length)];
+      if(bubbles[1]){
+        bubbles[1].innerHTML = HT_COACH_FEMALE[Math.floor(Math.random()*HT_COACH_FEMALE.length)];
+        bubbles[1].classList.add('pink');
+      }
+    }catch(eB){}
+    try{
+      var h2 = cel.querySelector('h2');
+      if(h2) h2.textContent = 'Exercício concluído! 🎉';
+      var p = cel.querySelector('.celebrateBox > p');
+      if(p) p.textContent = 'Os dois instrutores estão comemorando com você. Continue assim!';
+    }catch(eT){}
+    cel.classList.add('show');
+    cel.style.setProperty('display','grid','important');
+    cel.style.setProperty('visibility','visible','important');
+    cel.style.setProperty('pointer-events','auto','important');
+    cel.style.setProperty('opacity','1','important');
+    cel.style.setProperty('z-index','70','important');
+  }catch(e){ console.warn('[HT] showExerciseCelebrate', e); }
+}
+window.showExerciseCelebrate = showExerciseCelebrate;
+window.closeCelebrate = closeCelebrate;
+
 
 
 const DAY_PRAISES_SOLO=[
@@ -4301,94 +4469,105 @@ function applyFrameGeometry(){
   const link=document.getElementById('shareAchievementLink');if(link){link.href=APP_SHARE_URL;link.textContent=APP_SHARE_URL.replace(/^https?:\/\//,'')}
 }
 function openDayCelebrate(){
+  // V58: abre a aba de compartilhamento PRIMEIRO; resto é best-effort
+  try{ window.__htShareAllowed = true; window.__htBlockShareFromEvo = false; }catch(e0){}
   try{
-    if(window.__htBlockShareFromEvo){ console.log('[HT] share bloqueado (evolução/BF)'); return; }
-    // Só abre se o dia (4 principais) estiver completo OU sessão de ranking autorizada
-    // Admin nunca
-    try{
-      var ad=document.getElementById('admin');
-      if(ad && (ad.classList.contains('active')||ad.classList.contains('editor-open'))) return;
-    }catch(e){}
-    var rankOk = !!(window.__htWeeklyShareActive || window.__htShareAllowed);
-    var dayOk = false;
-    try{
-      if(typeof isDayMainDone==='function' && typeof currentDay!=='undefined') dayOk = !!isDayMainDone(currentDay);
-    }catch(e){}
-    // openDayCelebrate só com flag explícita OU dia completo (setado em completeCurrent)
-    if(!rankOk && !dayOk && !window.__htShareAllowed){
-      console.log('[HT] openDayCelebrate bloqueado');
-      return;
+    var ad=document.getElementById('admin');
+    // só bloqueia se admin estiver realmente visível na tela
+    if(ad && ad.classList.contains('active')){
+      var st = window.getComputedStyle(ad);
+      if(st.display !== 'none' && st.visibility !== 'hidden') return;
     }
-    window.__htShareAllowed = true;
   }catch(e){}
-  const d = days[currentDay];
-  if(!d) return;
-  // ===== MESMA CONTA da tela de início (renderHome) =====
-  // exercícios feitos do dia
-  let n = completed(currentDay);
-  if(!n){
-    // fallback: se todos foram marcados no fluxo de celebração
-    n = d.exercises.filter((_,i)=>isExDone(currentDay,i)).length || d.exercises.length;
-  }
-  const weight = Number((state.profile && state.profile.weight) || 75);
-  // renderHome: minutes = Math.round(done*4.5)
-  // renderHome: kcal = Math.round(done*(p.weight||75)*0.75)
-  const min = Math.round(n * 4.5);
-  const kcal = Math.round(n * weight * 0.75);
-  lastDayStats = {exercises: n, min, kcal, dayName: d.name || ('Dia ' + (currentDay + 1))};
-document.getElementById('dayStatExercises').textContent=n;
-  document.getElementById('dayStatMin').textContent=min;
-  document.getElementById('dayStatKcal').textContent=kcal;
-  frameMode = 'solo';
-  currentFrameId = 'solo_1';
-  try{
-    document.getElementById('tabSolo')?.classList.add('active');
-    document.getElementById('tabCasal')?.classList.remove('active');
-    document.getElementById('tabGrupo')?.classList.remove('active');
-  }catch(eT){}
-  pickPraise();
-  sharePhotoDataUrl = null;
-  sharePhotoImg = null;
-  photoScale = 1; photoX = 0; photoY = 0;
-  const img = document.getElementById('sharePhotoPreview');
-  const ph = document.getElementById('sharePlaceholder');
-  if(img){ img.style.display = 'none'; try{ img.removeAttribute('src'); }catch(e){} }
-  if(ph) ph.style.display = 'flex';
-  try{ setPhotoChrome(false); }catch(e){}
-  const z = document.getElementById('photoZoom'); if(z) z.value = 100;
-  const zv = document.getElementById('zoomVal'); if(zv) zv.textContent = '100%';
-  const dayEl = document.getElementById('dayCelebrate');
+  var dayEl = document.getElementById('dayCelebrate');
   if(dayEl){
     dayEl.classList.add('show');
-    dayEl.style.display = 'flex';
-    dayEl.style.visibility = 'visible';
-    dayEl.style.pointerEvents = 'auto';
+    dayEl.style.setProperty('display','flex','important');
+    dayEl.style.setProperty('visibility','visible','important');
+    dayEl.style.setProperty('pointer-events','auto','important');
+    dayEl.style.setProperty('opacity','1','important');
+    dayEl.style.setProperty('z-index','90','important');
   }
-  // Re-sincroniza nome/link/dev do card e do rodapé "Conheça o aplicativo" toda vez
-  // que a tela de compartilhamento abre (openDayCelebrate não passa pelo window.show,
-  // então o auto-refresh de marca não disparava aqui antes).
-  try{ if(typeof window.gmApplyShareFooter==='function') window.gmApplyShareFooter(); }catch(eBrand){}
-  try{ if(typeof window.htSyncBottomShareLinks==='function') window.htSyncBottomShareLinks(); }catch(eBrand2){}
-  // Moldura: re-aplica várias vezes após o layout (corrige moldura "bugada" na 1ª abertura)
-  function htFixFrameLayout(){
+  try{
+    var d = (typeof days!=='undefined' && days && typeof currentDay!=='undefined') ? days[currentDay] : null;
+    if(!d){
+      try{ if(typeof toast==='function') toast('Treino do dia não encontrado'); }catch(e){}
+      return;
+    }
+    var n = 0;
+    try{ n = completed(currentDay); }catch(e){}
+    if(!n && d.exercises){
+      try{ n = d.exercises.filter(function(_,i){ return isExDone(currentDay,i); }).length || d.exercises.length; }catch(e){ n = d.exercises.length||4; }
+    }
+    if(!n) n = 4;
+    var weight = 75;
+    try{ weight = Number((state.profile && state.profile.weight) || 75); }catch(e){}
+    var min = htEstimateWorkoutMinutes(n);
+    var kcal = htEstimateWorkoutKcal(n, weight, min);
+    try{ lastDayStats = {exercises: n, min: min, kcal: kcal, dayName: d.name || ('Dia ' + (currentDay + 1))}; }catch(e){}
+    function setT(id,v){ try{ var el=document.getElementById(id); if(el) el.textContent=v; }catch(e){} }
+    setT('dayStatExercises', n);
+    setT('dayStatMin', min);
+    setT('dayStatKcal', kcal);
+    try{ frameMode = 'solo'; currentFrameId = 'solo_1'; }catch(e){}
     try{
-      if(typeof renderFrameStrip === 'function') renderFrameStrip();
-      if(typeof selectFrame === 'function') selectFrame(currentFrameId || 'solo_1');
-      else {
-        if(typeof applyFrameGeometry === 'function') applyFrameGeometry();
-        if(typeof updateFrameArt === 'function') updateFrameArt();
-      }
-      if(typeof bindPhotoDrag === 'function') bindPhotoDrag();
-      if(typeof bindPhotoTapToggle === 'function') bindPhotoTapToggle();
-    }catch(eF){ console.warn(eF); }
+      document.getElementById('tabSolo')&&document.getElementById('tabSolo').classList.add('active');
+      document.getElementById('tabCasal')&&document.getElementById('tabCasal').classList.remove('active');
+      document.getElementById('tabGrupo')&&document.getElementById('tabGrupo').classList.remove('active');
+    }catch(eT){}
+    try{ if(typeof pickPraise==='function') pickPraise(); }catch(e){}
+    try{
+      sharePhotoDataUrl = null;
+      sharePhotoImg = null;
+      photoScale = 1; photoX = 0; photoY = 0;
+    }catch(e){}
+    try{
+      var img = document.getElementById('sharePhotoPreview');
+      var ph = document.getElementById('sharePlaceholder');
+      if(img){ img.style.display = 'none'; try{ img.removeAttribute('src'); }catch(e){} }
+      if(ph) ph.style.display = 'flex';
+    }catch(e){}
+    try{ if(typeof setPhotoChrome==='function') setPhotoChrome(false); }catch(e){}
+    try{ var z = document.getElementById('photoZoom'); if(z) z.value = 100; }catch(e){}
+    try{ var zv = document.getElementById('zoomVal'); if(zv) zv.textContent = '100%'; }catch(e){}
+    // reafirma painel aberto (após fills)
+    if(dayEl){
+      dayEl.classList.add('show');
+      dayEl.style.setProperty('display','flex','important');
+      dayEl.style.setProperty('visibility','visible','important');
+      dayEl.style.setProperty('pointer-events','auto','important');
+      dayEl.style.setProperty('opacity','1','important');
+    }
+    try{ if(typeof window.gmApplyShareFooter==='function') window.gmApplyShareFooter(); }catch(eBrand){}
+    try{ if(typeof window.htSyncBottomShareLinks==='function') window.htSyncBottomShareLinks(); }catch(eBrand2){}
+    function htFixFrameLayout(){
+      try{
+        if(typeof renderFrameStrip === 'function') renderFrameStrip();
+        if(typeof selectFrame === 'function') selectFrame(currentFrameId || 'solo_1');
+        else {
+          if(typeof applyFrameGeometry === 'function') applyFrameGeometry();
+          if(typeof updateFrameArt === 'function') updateFrameArt();
+        }
+        if(typeof bindPhotoDrag === 'function') bindPhotoDrag();
+        if(typeof bindPhotoTapToggle === 'function') bindPhotoTapToggle();
+      }catch(eF){ console.warn(eF); }
+    }
+    // V61: 1 layout imediato + 1 após imagens (evita “piscar” 5s)
+    try{ htFixFrameLayout(); }catch(e){}
+    try{
+      requestAnimationFrame(function(){
+        try{ htFixFrameLayout(); }catch(e){}
+        setTimeout(function(){ try{ htFixFrameLayout(); }catch(e){} }, 150);
+      });
+    }catch(e){}
+  }catch(err){
+    console.warn('[HT] openDayCelebrate fill', err);
+    // mesmo com erro de preenchimento, mantém painel aberto
+    try{
+      var el = document.getElementById('dayCelebrate');
+      if(el){ el.classList.add('show'); el.style.display='flex'; el.style.visibility='visible'; el.style.pointerEvents='auto'; }
+    }catch(e2){}
   }
-  htFixFrameLayout();
-  requestAnimationFrame(function(){
-    htFixFrameLayout();
-    setTimeout(htFixFrameLayout, 80);
-    setTimeout(htFixFrameLayout, 250);
-    setTimeout(htFixFrameLayout, 500);
-  });
 }
 function closeDayCelebrate(){
   try{ window.__htShareAllowed=false; window.__htWeeklyShareActive=false; }catch(e){}
@@ -5452,8 +5631,13 @@ function backToWorkout(){renderWorkout();show("workout")}
 function confirmReset(){
   if(!confirm("Zerar todos os exercícios e o progresso da semana?")) return;
   try{
-    state.done={}; state.loads={}; state.dayOpened=0;
+    state.done={};
+    state.loads={};
+    state.dayDone={};
+    state.dayOpened=0;
+    try{ if(state.progress) state.progress={}; }catch(e){}
     try{ currentSeriesDone=0; }catch(e){}
+    try{ currentDay=0; }catch(e){}
     if(typeof save==='function') save();
     function setTxt(id,v){ var el=document.getElementById(id); if(el) el.textContent=v; }
     function setW(id,v){ var el=document.getElementById(id); if(el) el.style.width=v; }
@@ -5461,10 +5645,25 @@ function confirmReset(){
     setTxt('percent','0%'); setTxt('percentSmall','0%'); setTxt('todayDone','0');
     setTxt('kcal','0'); setTxt('minutes','0'); setTxt('weekPct','0%');
     setTxt('weekLabel','0 / 5 treinos'); setTxt('streakLabel','0 dias');
+    try{ if(typeof renderHome==='function') renderHome(); }catch(e){}
     try{ if(typeof renderDays==='function') renderDays(); }catch(e){}
+    try{ if(typeof renderWorkout==='function') renderWorkout(); }catch(e){}
     try{ if(typeof updateHomeStats==='function') updateHomeStats(); }catch(e){}
+    // limpa visual residual dos dias (classe done / data-done)
+    try{
+      document.querySelectorAll('.day.done, .day[data-done="1"]').forEach(function(el){
+        el.classList.remove('done');
+        el.removeAttribute('data-done');
+      });
+      document.querySelectorAll('.exercise.done').forEach(function(el){
+        el.classList.remove('done');
+      });
+    }catch(e){}
     if(typeof toast==='function') toast('Semana zerada.');
     if(typeof show==='function') show('home');
+    setTimeout(function(){
+      try{ if(typeof renderHome==='function') renderHome(); }catch(e){}
+    }, 50);
   }catch(e){ alert('Erro ao zerar'); }
 }
 let toastTimer;function toast(msg){const t=document.getElementById("toast");t.textContent=msg;t.classList.add("show");clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove("show"),2200)}
@@ -8703,7 +8902,7 @@ function onMidTitleInput(){
       if(typeof liveBrandUpdate === 'function') liveBrandUpdate();
     });
   }
-  setInterval(bind, 500);
+  setInterval(bind, 10000);
 })();
 
 // Patch collectBrandForm
@@ -8841,7 +9040,7 @@ function onMidTitleInput(){
       r.readAsDataURL(f);
     });
   }
-  setInterval(bind, 600);
+  setInterval(bind, 10000);
 })();
 
 // Fill mid fields when opening editor
@@ -11086,7 +11285,7 @@ function composeApply(target){
     try{ if(paymentUnsub) paymentUnsub(); paymentUnsub=db.collection('paymentRequests').onSnapshot(function(){renderPaymentRequests();dashboard();},function(err){console.warn('[HT payment realtime]',err);}); }catch(e){}
     try{ if(usersUnsub) usersUnsub(); usersUnsub=db.collection('users').onSnapshot(function(){dashboard();},function(err){console.warn('[HT users realtime]',err);}); }catch(e){}
   }
-  setInterval(patch,1000);
+  setInterval(patch,10000);
   setInterval(dashboard,30000);
   setInterval(startRealtimeAdmin,60000);
   setTimeout(patch,800);
@@ -11260,7 +11459,7 @@ function composeApply(target){
   } else {
     paintLocalVersion();
   }
-  setInterval(paintLocalVersion, 2000);
+  setInterval(paintLocalVersion, 10000);
 
   unregisterFileSW().then(function () {
     return registerInlineSW();
@@ -20945,7 +21144,7 @@ if (tab === 'uso') {
     }
   }
 
-  // Observe admin panel
+  // Observe admin panel — V57: só o #admin, NÃO o document.body inteiro
   var obs = new MutationObserver(function () {
     if (document.getElementById('adminFramesSection') || document.getElementById('adminPanelFrames')) {
       var sc = scope();
@@ -20956,7 +21155,17 @@ if (tab === 'uso') {
       }
     }
   });
-  try { obs.observe(document.body, { childList: true, subtree: true }); } catch (e) {}
+  try {
+    var adminRoot = document.getElementById('admin') || document.getElementById('adminPanelFrames') || document.getElementById('adminFramesSection');
+    if (adminRoot) obs.observe(adminRoot, { childList: true, subtree: true });
+    else {
+      // fallback atrasado: espera o painel existir
+      setTimeout(function(){
+        var ar = document.getElementById('admin');
+        if (ar) try { obs.observe(ar, { childList: true, subtree: true }); } catch (e2) {}
+      }, 1500);
+    }
+  } catch (e) {}
 
   setTimeout(patchHeltonSave, 800);
   setTimeout(patchHeltonSave, 2500);
@@ -21850,7 +22059,9 @@ if (tab === 'uso') {
         profile = ensureIdentity(profile);
         window.htV39RenderProfileExtras(p, profile);
       });
-      obs.observe(document.body, { attributes: true, subtree: true, attributeFilter: ['class'] });
+      // V57: observa só #profile (ou .app), não document.body inteiro
+      var target = document.getElementById('profile') || document.querySelector('.app') || document.body;
+      obs.observe(target, { attributes: true, subtree: true, attributeFilter: ['class'] });
     } catch (e) {}
   }
 
@@ -23946,182 +24157,6 @@ console.log("[HT] Catraca: onclick inline only (global capture disabled)");
 })();
 </script>
 
-<script>
-/* ============================================================================
- * HT V40.1 STABILITY FIX v5 — anti-freeze LEVE e seguro
- * NÃO manipula a DOM a cada 1s (isso travava a home e o treino).
- * Só fecha gmRoot fantasma, libera body/barra e emergência 3 toques.
- * ============================================================================ */
-(function () {
-  'use strict';
-  var VER = 'stability-v5';
-
-  function safe(fn) {
-    try { return fn(); } catch (e) { return undefined; }
-  }
-
-  function gmIsOpen() {
-    var gm = document.getElementById('gmRoot');
-    return !!(gm && gm.classList.contains('show'));
-  }
-
-  function closeGmGhost() {
-    safe(function () {
-      var gm = document.getElementById('gmRoot');
-      if (!gm || gm.classList.contains('show')) return;
-      gm.style.display = 'none';
-      gm.style.visibility = 'hidden';
-      gm.style.pointerEvents = 'none';
-      gm.style.zIndex = '-1';
-    });
-  }
-
-  function unlockBody() {
-    safe(function () {
-      document.body.style.overflow = '';
-      document.documentElement.style.overflow = '';
-      document.body.style.pointerEvents = 'auto';
-      document.documentElement.style.pointerEvents = 'auto';
-    });
-  }
-
-  function fixBottom() {
-    safe(function () {
-      var bottom = document.getElementById('bottom');
-      if (!bottom || gmIsOpen()) return;
-      var wel = document.getElementById('authWelcome');
-      if (wel && wel.classList.contains('active')) {
-        bottom.style.display = 'none';
-        return;
-      }
-      bottom.style.display = 'flex';
-      bottom.style.pointerEvents = 'auto';
-      bottom.style.visibility = 'visible';
-      bottom.style.zIndex = '1200';
-    });
-  }
-
-  function reviveOpenModals() {
-    safe(function () {
-      ['restOverlay', 'celebrate', 'dayCelebrate', 'monthEndModal'].forEach(function (id) {
-        var el = document.getElementById(id);
-        if (!el || !el.classList.contains('show')) return;
-        el.style.pointerEvents = 'auto';
-        el.style.visibility = 'visible';
-        el.style.opacity = '1';
-        el.style.display = (id === 'celebrate') ? 'grid' : 'flex';
-      });
-    });
-  }
-
-  function softUnlock() {
-    if (gmIsOpen()) return;
-    closeGmGhost();
-    unlockBody();
-    fixBottom();
-    reviveOpenModals();
-  }
-
-  function fullUnlock(force) {
-    safe(function () {
-      var gm = document.getElementById('gmRoot');
-      if (gm && (force || !gm.classList.contains('show'))) {
-        gm.classList.remove('show');
-        gm.style.display = 'none';
-        gm.style.pointerEvents = 'none';
-        gm.style.visibility = 'hidden';
-        gm.style.zIndex = '-1';
-        try { gm.innerHTML = ''; } catch (e) {}
-      }
-      ['htCatOverlay', 'htAccessDesk', 'htAccessApiPanel'].forEach(function (id) {
-        var el = document.getElementById(id);
-        if (el) el.remove();
-      });
-      unlockBody();
-      fixBottom();
-      reviveOpenModals();
-    });
-    return true;
-  }
-
-  function watchGm() {
-    var tries = 0;
-    function attach() {
-      tries++;
-      var gm = document.getElementById('gmRoot');
-      if (!gm) {
-        if (tries < 40) setTimeout(attach, 400);
-        return;
-      }
-      if (gm.__htV5Obs) return;
-      gm.__htV5Obs = true;
-      new MutationObserver(function () {
-        if (!gm.classList.contains('show')) {
-          closeGmGhost();
-          unlockBody();
-          fixBottom();
-        }
-      }).observe(gm, { attributes: true, attributeFilter: ['class'] });
-    }
-    attach();
-  }
-
-  function patchShowLight() {
-    if (typeof window.show !== 'function' || window.show.__htV5) return;
-    var prev = window.show;
-    window.show = function (id) {
-      var r = prev.apply(this, arguments);
-      setTimeout(softUnlock, 30);
-      return r;
-    };
-    window.show.__htV5 = true;
-  }
-
-  function bindEmergency() {
-    if (window.__htV5Emerg) return;
-    window.__htV5Emerg = true;
-    var taps = [];
-    document.addEventListener('touchstart', function (ev) {
-      var t = ev.touches && ev.touches[0];
-      if (!t) return;
-      if (t.clientX < 70 && t.clientY < 70) {
-        var now = Date.now();
-        taps.push(now);
-        taps = taps.filter(function (x) { return now - x < 1000; });
-        if (taps.length >= 3) {
-          taps = [];
-          fullUnlock(true);
-          try { if (typeof toast === 'function') toast('Interface destravada'); } catch (e) {}
-        }
-      }
-    }, { passive: true });
-  }
-
-  function startLightWatch() {
-    if (window.__htV5Watch) return;
-    window.__htV5Watch = setInterval(softUnlock, 5000);
-  }
-
-  function boot() {
-    softUnlock();
-    watchGm();
-    patchShowLight();
-    bindEmergency();
-    startLightWatch();
-  }
-
-  window.htForceUnlock = function () { return fullUnlock(true); };
-  window.htStability = { version: VER, unlock: window.htForceUnlock };
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function () { setTimeout(boot, 200); });
-  } else {
-    setTimeout(boot, 200);
-  }
-  setTimeout(boot, 1500);
-  try { console.log('[HT] Stability', VER, 'leve'); } catch (e) {}
-})();
-</script>
 
 <script id="htWorkoutCriticalFixJS">
 (function(){
@@ -26017,8 +26052,8 @@ function htWeeklyTotals(){
     });
   });
   var weight = Number((state.profile && state.profile.weight)||75);
-  var min = Math.round(totalEx*4.5);
-  var kcal = Math.round(totalEx*weight*0.75);
+  var min = htEstimateWorkoutMinutes(totalEx);
+  var kcal = htEstimateWorkoutKcal(totalEx, weight, min);
   return {exercises:totalEx, load:Math.round(totalLoad), min:min, kcal:kcal};
 }
 function htWeekIsComplete(){
@@ -26310,7 +26345,7 @@ if(document.readyState==='loading') document.addEventListener('DOMContentLoaded'
 else htBootAddon();
 setTimeout(htBootAddon, 400);
 setTimeout(htBootAddon, 1200);
-setInterval(function(){ try{ htMaybeShowWeekModal(); }catch(e){} }, 8000);
+setInterval(function(){ try{ htMaybeShowWeekModal(); }catch(e){} }, 10000);
 
 window.htSetPlan=htSetPlan; window.htOpenNutritionGated=htOpenNutritionGated; window.htOpenEvolutionGated=htOpenEvolutionGated;
 window.htOpenRankingGated=htOpenRankingGated; window.htAnalyzeExams=htAnalyzeExams; window.htSwitchEvoTab=htSwitchEvoTab;
@@ -27255,7 +27290,7 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
     window.openShareCameraInApp=function(){htV44OpenCamera('ranking');};
   }
   htV44ReassertShareCamera();
-  setInterval(function(){try{htV44WireProgressButtons();htV44FixSilhouette();htV44ReassertShareCamera()}catch(e){}},1500);
+  setInterval(function(){try{htV44WireProgressButtons();htV44FixSilhouette();htV44ReassertShareCamera()}catch(e){}},10000);
 
 })();
 </script>
@@ -27488,7 +27523,7 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
     /* Mifflin-St Jeor (altura já em cm) */
     var sexConst = isF ? -161 : 5;
     var bmr = (wkg>0) ? Math.round(10*wkg + 6.25*height - 5*age + sexConst) : null;
-    var tdee = (bmr!=null) ? Math.round(bmr * 1.55) : null; /* atividade moderada */
+    var _actN=(state.profile&&Number(state.profile.activity))||1.725; if(!(_actN>=1.1&&_actN<=2.2))_actN=1.725; var tdee = (bmr!=null) ? Math.round(bmr * _actN) : null; /* fator atividade perfil */
     var kcalMass = (tdee!=null) ? tdee + 250 : null;
     var kcalCut = (tdee!=null) ? Math.max(Math.round((bmr||0)*1.2), tdee - 400) : null;
     var idealBfLow = isF ? 21 : 10;
@@ -27521,7 +27556,7 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
         '<div style="font-size:11px;font-weight:900;color:#56b5ff;margin-bottom:8px">🔥 Metabolismo (pelos seus dados)</div>'+
         '<div style="font-size:12px;color:#c5d3e3;line-height:1.55">'+
           'Metabolismo basal (TMB): <b style="color:#fff">'+(bmr!=null?bmr+' kcal':'—')+'</b><br>'+
-          'Gasto diário estimado: <b style="color:#fff">'+(tdee!=null?tdee+' kcal':'—')+'</b> <span style="color:#8ea0b8;font-size:10px">(atividade moderada ×1,55)</span><br>'+
+          'Gasto diário estimado: <b style="color:#fff">'+(tdee!=null?tdee+' kcal':'—')+'</b> <span style="color:#8ea0b8;font-size:10px">(fator de atividade do Perfil)</span><br>'+
           'Meta ganho de massa: <b style="color:#20e083">'+(kcalMass!=null?kcalMass+' kcal':'—')+'</b> <span style="color:#8ea0b8;font-size:10px">(+250 superávit)</span><br>'+
           'Meta emagrecimento: <b style="color:#ffbd3e">'+(kcalCut!=null?kcalCut+' kcal':'—')+'</b> <span style="color:#8ea0b8;font-size:10px">(déficit ~400)</span><br>'+
           'Meta manutenção: <b style="color:#55c4ff">'+(tdee!=null?tdee+' kcal':'—')+'</b>'+
@@ -28216,7 +28251,7 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
   function boot(){ wire(); recover(); }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot,300); });
   else setTimeout(boot,300);
-  setInterval(wire, 2500);
+  setInterval(wire, 10000);
   try{ console.log('[HT V45.6] Evolução only — compartilhamento intacto'); }catch(e){}
 })();
 </script>
@@ -28488,7 +28523,7 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
     ensurePermissionOnBoot();
     setInterval(function(){
       try{ wireUnifiedOverExisting(); }catch(e){}
-    }, 2000);
+    }, 10000);
     log('Capacitor + permissões de câmera prontos. Native=', hasCapacitor());
   }
 
@@ -28813,7 +28848,7 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
         }
       }
     }catch(e){}
-    setInterval(reassert, 1500);
+    setInterval(reassert, 10000);
     log('Share camera = mesma base da Evolução (in-app). Nunca mais capture nativo.');
   }
 
@@ -29381,14 +29416,10 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
     lockShareHandlers();
     patchPhotoScreenForMaster();
     injectMasterResetBtn();
-    // reassert forte — ganha de outros scripts
-    setInterval(function(){
-      try{
-        lockShareHandlers();
-        injectMasterResetBtn();
-      }catch(e){}
-    }, 800);
-    log('Share = getUserMedia in-app only. Master photo reset ready. isMaster=', htIsMasterTester());
+    // V57: SEM loop de 800ms — uma vez no boot + 2 reasserts atrasados bastam
+    setTimeout(function(){ try{ lockShareHandlers(); injectMasterResetBtn(); }catch(e){} }, 500);
+    setTimeout(function(){ try{ lockShareHandlers(); injectMasterResetBtn(); }catch(e){} }, 2000);
+    log('Share = getUserMedia in-app only (sem loop 800ms). isMaster=', htIsMasterTester());
   }
 
   if(document.readyState === 'loading'){
@@ -29417,11 +29448,15 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
     // Admin / Master / edição de moldura: NUNCA compartilhamento
     try{
       var ad = document.getElementById('admin');
-      if(ad && ad.classList.contains('active')) return false;
-      if(ad && ad.classList.contains('editor-open')) return false;
-      if(document.getElementById('htV36Studio') && document.getElementById('admin') && document.getElementById('admin').classList.contains('active')) return false;
+      if(ad && ad.classList.contains('active')){
+        var st = window.getComputedStyle(ad);
+        if(st.display !== 'none' && st.visibility !== 'hidden') return false;
+      }
       var auth = document.getElementById('authAdminLogin');
-      if(auth && auth.classList.contains('active')) return false;
+      if(auth && auth.classList.contains('active')){
+        var st2 = window.getComputedStyle(auth);
+        if(st2.display !== 'none') return false;
+      }
     }catch(e){}
     if(window.__htShareAllowed) return true;
     if(window.__htWeeklyShareActive) return true;
@@ -29503,10 +29538,20 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
   setInterval(function(){
     try{
       wrapEnsure(); wrapOpen(); wireRankBtn();
-      // se share aberto ilegalmente, fecha
-      if(!allowed()) closeShare(true);
+      // Só fecha se REALMENTE ilegal: não força quando dia está completo
+      var day = document.getElementById('dayCelebrate');
+      if(day && day.classList.contains('show') && !allowed()){
+        // revalida: se 4 principais feitos, autoriza em vez de fechar
+        try{
+          if(typeof isDayMainDone==='function' && typeof currentDay!=='undefined' && isDayMainDone(currentDay)){
+            window.__htShareAllowed = true;
+            return;
+          }
+        }catch(e2){}
+        closeShare(true);
+      }
     }catch(e){}
-  }, 1200);
+  }, 2500);
   try{ console.log('[HT ShareGate] ativo — só 4 exercícios ou ranking'); }catch(e){}
 })();
 </script>
@@ -29536,8 +29581,15 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
     return false;
   }
   setInterval(function(){
-    if(isAdminView()) closeShareHard();
-  }, 600);
+    try{
+      if(!isAdminView()) return;
+      var ad = document.getElementById('admin');
+      if(!ad) return;
+      var st = window.getComputedStyle(ad);
+      if(st.display === 'none' || st.visibility === 'hidden') return;
+      closeShareHard();
+    }catch(e){}
+  }, 2000);
   // Patch adminShowPanel
   function patch(){
     if(typeof window.adminShowPanel === 'function' && !window.adminShowPanel.__htNoShare){
@@ -29558,7 +29610,7 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
     }
   }
   patch();
-  setInterval(patch, 1500);
+  setInterval(patch, 10000);
   try{ console.log('[HT] Never share on admin/master'); }catch(e){}
 })();
 </script>
@@ -29637,7 +29689,7 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(wire,100); });
   else setTimeout(wire,100);
-  setInterval(wire, 2000);
+  setInterval(wire, 10000);
 })();
 </script>
 
@@ -29778,7 +29830,7 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot,200); });
   else setTimeout(boot,200);
-  setInterval(function(){ injectRefreshBtn(); fixRankingNote(); }, 3000);
+  setInterval(function(){ injectRefreshBtn(); fixRankingNote(); }, 10000);
 
   try{ console.log('[HT] Ranking competitivo + Master apaga todas as fotos'); }catch(e){}
 })();
@@ -30212,7 +30264,7 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
 
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot,300); });
   else setTimeout(boot,300);
-  setInterval(function(){ try{ patchRender(); patchPost(); patchComplete(); patchOpenRank(); ensureMasterResetBtn(); }catch(e){} }, 2000);
+  setInterval(function(){ try{ patchRender(); patchPost(); patchComplete(); patchOpenRank(); ensureMasterResetBtn(); }catch(e){} }, 10000);
 
   if(typeof window.show==='function' && !window.show.__htV48Rank){
     var prevShow=window.show;
@@ -30464,7 +30516,7 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(bind,200); });
   else setTimeout(bind,200);
-  setInterval(bind, 2000);
+  setInterval(bind, 10000);
 })();
 </script>
 
@@ -30495,782 +30547,33 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
   // também reexporta confirm -> doPost
   function wire(){
     try{
-      if(typeof window.htDoPostRanking==='function'){
-        window.htConfirmPostRanking = function(){ return window.htDoPostRanking(); };
-      }
+      // Não sobrescreve htConfirmPostRanking aqui: V48 pode ter instalado
+      // um wrapper de pontuação/publicação. O botão chama htDoPostRanking diretamente.
     }catch(e){}
     bindBtn();
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(wire,300); });
   else setTimeout(wire,300);
-  setInterval(wire, 1500);
+  setInterval(wire, 10000);
 })();
 </script>
 
 
-<!-- ===== HT UI RESPONSIVENESS FIX V52 =====
-     - Treino abre de forma estável
-     - Compartilhamento após 4 exercícios (não só ranking)
-     - Anti-freeze: desbloqueio automático ao trocar de aba
-     - 3 toques no canto superior esquerdo = destravar
+
+
+
+
+<!-- ===== HT FIX V56 — SYNC ÚNICO (cadastro + 2 painéis + nutri) =====
+     Unifica V53 + V54. Anti-congelamento fica só no V55.
 -->
-<script id="htUiResponsivenessV52">
+<script id="htFixV56SyncNutri">
 (function(){
   'use strict';
-  var LOG = '[HT UI-V52]';
+  var LOG = '[HT V56]';
   function log(){ try{ console.log.apply(console, [LOG].concat([].slice.call(arguments))); }catch(e){} }
-
-  var GHOST_IDS = [
-    'gmRoot','restOverlay','celebrate','dayCelebrate','monthEndModal',
-    'htShareGumOverlay','htShareCamEvoStyle','htShareCamOverlay',
-    'htEvoCamOverlay','htCamV44','htEvoOnlyCamOverlay',
-    'htCatOverlay','htAccessDesk','htAccessApiPanel'
-  ];
-
-  function killGhost(el){
-    if(!el) return;
-    try{
-      if(el.id === 'gmRoot'){
-        if(el.classList.contains('show')) return;
-        el.classList.remove('show');
-        el.style.display = 'none';
-        el.style.visibility = 'hidden';
-        el.style.pointerEvents = 'none';
-        el.style.opacity = '0';
-        el.style.zIndex = '-1';
-        return;
-      }
-      if(el.classList && el.classList.contains('show')) return;
-      if(el.id === 'restOverlay' || el.id === 'celebrate' || el.id === 'dayCelebrate' || el.id === 'monthEndModal'){
-        el.classList.remove('show');
-        el.style.display = 'none';
-        el.style.pointerEvents = 'none';
-        el.style.visibility = 'hidden';
-        el.style.opacity = '0';
-        return;
-      }
-      if(el.getAttribute && el.getAttribute('data-ht-stale') === '1'){
-        try{ el.remove(); }catch(e){}
-      }
-    }catch(e){}
-  }
-
-  function unlockBody(){
-    try{
-      document.body.style.pointerEvents = 'auto';
-      document.documentElement.style.pointerEvents = 'auto';
-      document.body.style.overflow = '';
-      document.documentElement.style.overflow = '';
-      document.body.style.touchAction = '';
-      document.documentElement.style.touchAction = '';
-    }catch(e){}
-  }
-
-  function unlockBottom(){
-    try{
-      var bottom = document.getElementById('bottom');
-      if(!bottom) return;
-      var hide = false;
-      ['authWelcome','paywall','admin','authAdminLogin','authRegister'].forEach(function(id){
-        var el = document.getElementById(id);
-        if(el && el.classList.contains('active')) hide = true;
-      });
-      var gm = document.getElementById('gmRoot');
-      if(gm && gm.classList.contains('show')) hide = true;
-      if(hide){ bottom.style.display = 'none'; return; }
-      bottom.style.display = 'flex';
-      bottom.style.pointerEvents = 'auto';
-      bottom.style.visibility = 'visible';
-      bottom.style.opacity = '1';
-      bottom.style.zIndex = '1200';
-      bottom.querySelectorAll('.nav, button').forEach(function(b){
-        b.style.pointerEvents = 'auto';
-        b.style.touchAction = 'manipulation';
-      });
-    }catch(e){}
-  }
-
-  function unlockActiveScreen(){
-    try{
-      var active = document.querySelector('.screen.active');
-      if(!active) return;
-      active.style.pointerEvents = 'auto';
-      active.style.visibility = 'visible';
-      active.style.opacity = '1';
-      active.querySelectorAll('button, a, input, select, .day, .exercise, .nav, .bigBtn, .authBtn').forEach(function(el){
-        if(el.disabled) return;
-        el.style.pointerEvents = 'auto';
-      });
-    }catch(e){}
-  }
-
-  function htUiUnlock(opts){
-    opts = opts || {};
-    try{
-      GHOST_IDS.forEach(function(id){
-        var el = document.getElementById(id);
-        if(el) killGhost(el);
-      });
-      if(opts.forceCamClose){
-        try{
-          document.querySelectorAll('[id*="CamOverlay"], [id*="ShareGum"], [id*="ShareCam"]').forEach(function(el){
-            if(!el || !el.id) return;
-            var v = el.querySelector('video');
-            if(v && v.srcObject) return;
-            try{ el.remove(); }catch(e){}
-          });
-        }catch(e){}
-      }
-      unlockBody();
-      unlockBottom();
-      unlockActiveScreen();
-      try{
-        var ad = document.getElementById('admin');
-        if(ad && ad.classList.contains('active')){
-          window.__htShareAllowed = false;
-          var day = document.getElementById('dayCelebrate');
-          if(day){
-            day.classList.remove('show');
-            day.style.display = 'none';
-            day.style.pointerEvents = 'none';
-          }
-        }
-      }catch(e){}
-    }catch(e){ log('unlock fail', e); }
-    return true;
-  }
-  window.htUiUnlock = htUiUnlock;
-
-  function patchShow(){
-    if(typeof window.show !== 'function' || window.show.__htV52) return;
-    var prev = window.show;
-    window.show = function(id){
-      try{ htUiUnlock(); }catch(e){}
-      var r;
-      try{ r = prev.apply(this, arguments); }
-      catch(err){
-        log('show error', err);
-        try{ htUiUnlock({ forceCamClose: true }); }catch(e2){}
-        throw err;
-      }
-      setTimeout(function(){ htUiUnlock(); }, 20);
-      setTimeout(function(){ htUiUnlock(); }, 200);
-      return r;
-    };
-    window.show.__htV52 = true;
-  }
-
-  function wireBottomNav(){
-    try{
-      var bottom = document.getElementById('bottom');
-      if(!bottom || bottom.__htV52Nav) return;
-      bottom.__htV52Nav = true;
-      bottom.addEventListener('touchstart', function(){ htUiUnlock(); }, {capture:true, passive:true});
-      bottom.addEventListener('click', function(){ htUiUnlock(); }, true);
-    }catch(e){}
-  }
-
-  function wireEmergency(){
-    if(window.__htV52Emerg) return;
-    window.__htV52Emerg = true;
-    var taps = [];
-    document.addEventListener('touchstart', function(ev){
-      var t = ev.touches && ev.touches[0];
-      if(!t) return;
-      if(t.clientX < 80 && t.clientY < 80){
-        var now = Date.now();
-        taps.push(now);
-        taps = taps.filter(function(x){ return now - x < 1200; });
-        if(taps.length >= 3){
-          taps = [];
-          htUiUnlock({ forceCamClose: true });
-          try{ if(typeof htForceUnlock === 'function') htForceUnlock(); }catch(e){}
-          try{ if(typeof toast === 'function') toast('Interface destravada'); }catch(e){}
-        }
-      }
-    }, {passive:true});
-  }
-
-  function patchComplete(){
-    if(typeof window.completeCurrent !== 'function' || window.completeCurrent.__htV52) return;
-    var prev = window.completeCurrent;
-    window.completeCurrent = function(){
-      var ret = prev.apply(this, arguments);
-      try{
-        var dayIdx = (typeof currentDay !== 'undefined') ? currentDay : 0;
-        if(typeof isDayMainDone === 'function' && isDayMainDone(dayIdx)){
-          window.__htShareAllowed = true;
-          window.__htBlockShareFromEvo = false;
-          setTimeout(function(){
-            try{ if(typeof openDayCelebrate === 'function') openDayCelebrate(); }catch(e){}
-          }, 80);
-        }
-      }catch(e){}
-      return ret;
-    };
-    window.completeCurrent.__htV52 = true;
-  }
-
-  function safeOpenDay(i){
-    try{
-      if(typeof openDay === 'function') return openDay(i);
-    }catch(e){}
-    try{ if(typeof show === 'function') show('workout'); }catch(e2){}
-  }
-  window.htSafeOpenDay = safeOpenDay;
-
-  function boot(){
-    patchShow();
-    wireBottomNav();
-    wireEmergency();
-    patchComplete();
-    htUiUnlock();
-    log('responsiveness unlock ativo');
-  }
-
-  if(document.readyState === 'loading'){
-    document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot, 200); });
-  } else {
-    setTimeout(boot, 200);
-  }
-  setTimeout(boot, 1000);
-  setTimeout(boot, 2500);
-
-  setInterval(function(){
-    try{
-      patchShow();
-      wireBottomNav();
-      patchComplete();
-      var gm = document.getElementById('gmRoot');
-      if(gm && !gm.classList.contains('show')){
-        if(gm.style.pointerEvents !== 'none' || (gm.style.display && gm.style.display !== 'none')){
-          htUiUnlock();
-        }
-      }
-      var day = document.getElementById('dayCelebrate');
-      if(day && !day.classList.contains('show')){
-        var d = (day.style && day.style.display) || '';
-        if(d === 'flex' || d === 'block' || day.style.pointerEvents === 'auto'){
-          day.style.display = 'none';
-          day.style.pointerEvents = 'none';
-          day.style.visibility = 'hidden';
-        }
-      }
-      var rest = document.getElementById('restOverlay');
-      if(rest && !rest.classList.contains('show')){
-        if(rest.style.display === 'flex' || rest.style.pointerEvents === 'auto'){
-          rest.style.display = 'none';
-          rest.style.pointerEvents = 'none';
-        }
-      }
-    }catch(e){}
-  }, 3500);
-})();
-</script>
-
-
-
-<!-- ===== HT FIX V53 — SYNC CADASTRO MASTER + NUTRI + ANTI-TRAVAMENTO ===== -->
-<script id="htFixV53SyncNutriFreeze">
-(function(){
-  'use strict';
-  var LOG = '[HT V53]';
-  function log(){ try{ console.log.apply(console, [LOG].concat([].slice.call(arguments))); }catch(e){} }
-  function toastMsg(m){ try{ if(typeof toast==='function') toast(m); }catch(e){} }
+  function now(){ return Date.now(); }
+  function OPEN_ID(){ return 'OPEN_LIVRE'; }
   function fb(){ return window.htFirebase && window.htFirebase.db ? window.htFirebase.db : null; }
-  function emailKey(e){ return String(e||'').trim().toLowerCase().replace(/[.#$\[\]]/g,'_'); }
-  function now(){ return Date.now(); }
-  function OPEN_ID(){ return 'OPEN_LIVRE'; }
-
-  function gmIsOpen(){
-    try{
-      var gm = document.getElementById('gmRoot');
-      return !!(gm && gm.classList.contains('show'));
-    }catch(e){ return false; }
-  }
-
-  /* ========== 1) Garante Academia Acesso Livre ========== */
-  function ensureOpenAcademyLocal(){
-    var OPEN = OPEN_ID();
-    try{
-      if(typeof window.htEnsureOpenAcademy === 'function'){
-        window.htEnsureOpenAcademy();
-      }
-    }catch(e){}
-    try{
-      var raw = localStorage.getItem('gymmasterFullV7');
-      var g = raw ? JSON.parse(raw) : {};
-      g.academies = g.academies || {};
-      g.accounts = g.accounts || {};
-      if(!g.academies[OPEN]){
-        g.academies[OPEN] = {
-          academyId: OPEN,
-          name: 'Acesso Livre (sem academia)',
-          inviteCode: 'LIVRE',
-          codigoAcademia: 'LIVRE',
-          status: 'active',
-          studentLimit: 99999,
-          planValue: 0,
-          responsible: 'Sistema',
-          createdAt: now(),
-          shareBrand: { brandName: 'Acesso Livre', appLink: '', primaryColor: '#168cff', showLink: true },
-          admins: {},
-          students: {},
-          payments: {},
-          isOpenGroup: true
-        };
-        localStorage.setItem('gymmasterFullV7', JSON.stringify(g));
-      }
-      try{ if(typeof window.htGmReload === 'function') window.htGmReload(); }catch(e2){}
-      return OPEN;
-    }catch(e){ return OPEN; }
-  }
-
-  /* ========== 2) Merge usuário cloud → gymmaster local ========== */
-  function mergeCloudUserIntoGm(u){
-    if(!u || !u.email) return false;
-    var email = String(u.email).trim().toLowerCase();
-    if(!email) return false;
-    ensureOpenAcademyLocal();
-    var changed = false;
-    try{
-      var raw = localStorage.getItem('gymmasterFullV7');
-      var g = raw ? JSON.parse(raw) : { academies:{}, accounts:{} };
-      g.academies = g.academies || {};
-      g.accounts = g.accounts || {};
-
-      var aid = String(u.academyId || u.academiaId || '').trim();
-      if(!aid || !g.academies[aid]){
-        // Sem academia válida → Acesso Livre
-        aid = OPEN_ID();
-        if(!g.academies[aid]){
-          g.academies[aid] = {
-            academyId: aid, name: 'Acesso Livre (sem academia)', inviteCode: 'LIVRE',
-            status: 'active', students: {}, admins: {}, payments: {}, isOpenGroup: true, studentLimit: 99999
-          };
-        }
-      }
-      var aca = g.academies[aid];
-      aca.students = aca.students || {};
-
-      // Já existe aluno com este e-mail nesta academia?
-      var existingSid = null;
-      Object.keys(aca.students).forEach(function(sid){
-        var st = aca.students[sid];
-        if(st && String(st.email||'').trim().toLowerCase() === email) existingSid = sid;
-      });
-      // Conta global aponta studentId?
-      var acc = g.accounts[email];
-      if(!existingSid && acc && acc.academyId === aid && acc.studentId && aca.students[acc.studentId]){
-        existingSid = acc.studentId;
-      }
-
-      var name = (u.profile && u.profile.name) || u.name || '';
-      var sid = existingSid || (acc && acc.studentId) || ('S' + now().toString(36).toUpperCase() + Math.random().toString(36).slice(2,4).toUpperCase());
-
-      if(!aca.students[sid]){
-        aca.students[sid] = {
-          studentId: sid,
-          name: name,
-          email: email,
-          cpf: u.cpf || '',
-          planName: 'Mensal',
-          value: 0,
-          dueDate: '',
-          paymentStatus: (Number(u.paidUntil||0) > now()) ? 'paid' : 'pending',
-          accessStatus: u.blocked ? 'blocked' : 'active',
-          accessType: (aid === OPEN_ID() ? 'open' : 'academy'),
-          passHash: u.passHash || (acc && acc.passHash) || '',
-          usingApp: true,
-          lastAccess: u.lastLogin || u.lastSeen || u.updatedAt || now(),
-          createdAt: u.createdAt || now(),
-          fromSelfRegister: !!(u.fromSelfRegister || u.role === 'SELF_REGISTERED')
-        };
-        changed = true;
-      } else {
-        var st = aca.students[sid];
-        if(name && !st.name){ st.name = name; changed = true; }
-        if(u.blocked != null && st.accessStatus !== (u.blocked ? 'blocked' : 'active')){
-          st.accessStatus = u.blocked ? 'blocked' : 'active'; changed = true;
-        }
-        if(u.lastLogin && (!st.lastAccess || st.lastAccess < u.lastLogin)){
-          st.lastAccess = u.lastLogin; st.usingApp = true; changed = true;
-        }
-        if(u.passHash && !st.passHash){ st.passHash = u.passHash; changed = true; }
-      }
-
-      // accounts
-      var role = (u.role === 'ACADEMY_ADMIN') ? 'ACADEMY_ADMIN' :
-                (aid === OPEN_ID() || u.fromSelfRegister || u.role === 'SELF_REGISTERED') ? 'SELF_REGISTERED' : 'STUDENT';
-      if(!g.accounts[email]){
-        g.accounts[email] = {
-          role: role,
-          email: email,
-          name: name,
-          academyId: aid,
-          studentId: sid,
-          createdAt: u.createdAt || now(),
-          fromSelfRegister: !!(u.fromSelfRegister || role === 'SELF_REGISTERED'),
-          passHash: u.passHash || (aca.students[sid] && aca.students[sid].passHash) || ''
-        };
-        changed = true;
-      } else {
-        var a = g.accounts[email];
-        if(!a.academyId){ a.academyId = aid; changed = true; }
-        if(!a.studentId){ a.studentId = sid; changed = true; }
-        if(name && !a.name){ a.name = name; changed = true; }
-        if(u.passHash && !a.passHash){ a.passHash = u.passHash; changed = true; }
-      }
-
-      if(changed){
-        localStorage.setItem('gymmasterFullV7', JSON.stringify(g));
-        try{ if(typeof window.htGmReload === 'function') window.htGmReload(); }catch(eR){}
-      }
-      return changed;
-    }catch(e){
-      log('merge fail', e);
-      return false;
-    }
-  }
-
-  /** Puxa todos os usuários da nuvem e espelha no GymMaster local (Master vê todos) */
-  function pullCloudUsersIntoMaster(){
-    var db = fb();
-    if(!db) return Promise.resolve(0);
-    var job = Promise.resolve();
-    try{
-      if(typeof window.htEnsureCloudAuth === 'function') job = window.htEnsureCloudAuth();
-    }catch(e){}
-    return job.then(function(){
-      return db.collection('users').limit(500).get();
-    }).then(function(snap){
-      var n = 0;
-      snap.forEach(function(doc){
-        var u = doc.data() || {};
-        if(!u.email) u.email = doc.id.replace(/_/g,'.'); // fallback fraco
-        // normaliza email
-        u.email = String(u.email || '').trim().toLowerCase();
-        if(!u.email || u.email.indexOf('@') < 0){
-          // tenta id como email key
-          var id = String(doc.id || '').replace(/_/g,'.');
-          if(id.indexOf('@') >= 0) u.email = id.toLowerCase();
-        }
-        if(!u.email || u.email.indexOf('@') < 0) return;
-        // ignora contas admin/master genéricas sem cadastro aluno
-        if(u.role === 'MASTER' || u.role === 'Admin') return;
-        if(mergeCloudUserIntoGm(u)) n++;
-      });
-      log('cloud→gm merge', n, 'alterações');
-      return n;
-    }).catch(function(err){
-      log('pull cloud users fail', err);
-      return 0;
-    });
-  }
-
-  /** Também puxa auth local (mesmo aparelho) para o GM */
-  function mergeLocalAuthIntoGm(){
-    try{
-      if(typeof authLoad !== 'function') return 0;
-      var db = authLoad() || {};
-      var users = db.users || {};
-      var n = 0;
-      Object.keys(users).forEach(function(email){
-        var u = users[email];
-        if(!u) return;
-        u.email = email;
-        if(mergeCloudUserIntoGm(u)) n++;
-      });
-      return n;
-    }catch(e){ return 0; }
-  }
-
-  /* ========== 3) Reforça doRegister: sempre cria aluno no OPEN_LIVRE ou academia ========== */
-  function strengthenRegister(){
-    if(typeof window.doRegister !== 'function' || window.doRegister.__htV53) return;
-    var prev = window.doRegister;
-    window.doRegister = async function(){
-      var ret = await prev.apply(this, arguments);
-      try{
-        // Após cadastro, força espelho local + cloud
-        var email = '';
-        try{ email = (document.getElementById('regEmail') && document.getElementById('regEmail').value || '').trim().toLowerCase(); }catch(e){}
-        if(!email && typeof getSession === 'function'){
-          var s = getSession(); if(s) email = s.email || '';
-        }
-        if(email){
-          ensureOpenAcademyLocal();
-          // lê o que foi gravado e re-merge
-          try{
-            var localDb = typeof authLoad === 'function' ? authLoad() : {users:{}};
-            var u = (localDb.users && localDb.users[email]) || { email: email, fromSelfRegister: true };
-            u.email = email;
-            // se não tem academyId, OPEN_LIVRE
-            if(!u.academyId) u.academyId = OPEN_ID();
-            mergeCloudUserIntoGm(u);
-          }catch(eM){}
-          try{
-            if(typeof htPushUser === 'function'){
-              htPushUser(email, {
-                fromSelfRegister: true,
-                academyId: (function(){
-                  try{
-                    var ldb = authLoad();
-                    return (ldb.users && ldb.users[email] && ldb.users[email].academyId) || OPEN_ID();
-                  }catch(e){ return OPEN_ID(); }
-                })()
-              });
-            }
-          }catch(eP){}
-          try{
-            if(typeof htSyncGymAccount === 'function'){
-              var ldb2 = typeof authLoad === 'function' ? authLoad() : {users:{}};
-              var uu = (ldb2.users && ldb2.users[email]) || {};
-              htSyncGymAccount({
-                email: email,
-                role: uu.academyId && uu.academyId !== OPEN_ID() ? 'STUDENT' : 'SELF_REGISTERED',
-                fromSelfRegister: true,
-                academyId: uu.academyId || OPEN_ID(),
-                studentId: null,
-                createdAt: uu.createdAt || now(),
-                lastLogin: now(),
-                blocked: false,
-                paidUntil: uu.paidUntil || null,
-                passHash: uu.passHash || null
-              });
-            }
-          }catch(eS){}
-        }
-      }catch(e){ log('post-register reinforce', e); }
-      return ret;
-    };
-    window.doRegister.__htV53 = true;
-  }
-
-  /* ========== 4) Quando Master/Academia abre o painel, sincroniza lista ========== */
-  function patchGmOpen(){
-    function wrap(name){
-      if(typeof window[name] !== 'function' || window[name].__htV53) return;
-      var prev = window[name];
-      window[name] = function(){
-        var r = prev.apply(this, arguments);
-        setTimeout(function(){
-          try{
-            mergeLocalAuthIntoGm();
-            pullCloudUsersIntoMaster().then(function(){
-              // tenta refrescar tela atual do GM se possível
-              try{
-                if(typeof window.htGmReload === 'function') window.htGmReload();
-              }catch(e){}
-            });
-          }catch(e){}
-        }, 300);
-        return r;
-      };
-      window[name].__htV53 = true;
-    }
-    wrap('htOpenMasterAccess');
-    wrap('htOpenAcademiaAccess');
-  }
-
-  // Intervalo leve: só quando painel GM está aberto, re-puxa nuvem a cada 25s
-  var _lastPull = 0;
-  function maybePullWhileGmOpen(){
-    if(!gmIsOpen()) return;
-    var t = now();
-    if(t - _lastPull < 25000) return;
-    _lastPull = t;
-    try{
-      mergeLocalAuthIntoGm();
-      pullCloudUsersIntoMaster();
-    }catch(e){}
-  }
-
-  /* ========== 5) Nutrição: TMB, gasto diário, superávit/déficit ========== */
-  function enhanceNutrition(){
-    if(typeof window.calcNutritionTargets !== 'function') return;
-    if(window.calcNutritionTargets.__htV53) return;
-    var prevCalc = window.calcNutritionTargets;
-    window.calcNutritionTargets = function(){
-      var t = prevCalc.apply(this, arguments) || {};
-      try{
-        var p = (typeof state !== 'undefined' && state.profile) || {age:34,weight:75,height:172,gender:'masculino'};
-        var age = Number(p.age)||34, weight = Number(p.weight)||75, height = Number(p.height)||172;
-        if(height>0 && height<3) height = height*100;
-        if(height<100 || height>250) height = 172;
-        var sex = (String(p.gender||'').toLowerCase().indexOf('fem')>=0) ? -161 : 5;
-        var bmr = Math.round(10*weight + 6.25*height - 5*age + sex);
-        var maintenance = Math.round(bmr * 1.55); // gasto diário estimado (moderado)
-        if(t.maintenance == null) t.maintenance = maintenance;
-        t.bmr = bmr;
-        t.tdee = t.maintenance || maintenance;
-        var goal = (typeof nutritionGoal !== 'undefined') ? nutritionGoal : ((state && state.nutrition && state.nutrition.goal) || 'well');
-        if(goal === 'mass') t.surplus = Math.max(0, (t.kcal||0) - t.tdee);
-        else if(goal === 'fat') t.deficit = Math.max(0, t.tdee - (t.kcal||0));
-        else { t.surplus = 0; t.deficit = 0; }
-      }catch(e){}
-      return t;
-    };
-    window.calcNutritionTargets.__htV53 = true;
-
-    if(typeof window.renderNutrition !== 'function') return;
-    if(window.renderNutrition.__htV53) return;
-    var prevRender = window.renderNutrition;
-    window.renderNutrition = function(){
-      var r = prevRender.apply(this, arguments);
-      try{
-        var t = window.calcNutritionTargets();
-        var host = document.querySelector('.nutriTargets');
-        if(!host) return r;
-        var box = document.getElementById('htNutriMetaBox');
-        if(!box){
-          box = document.createElement('div');
-          box.id = 'htNutriMetaBox';
-          box.style.cssText = 'margin-top:10px;padding:10px;border-radius:12px;background:#050c16;border:1px solid #29405d;font-size:11px;line-height:1.45;color:#c5d3e3';
-          host.appendChild(box);
-        }
-        var goal = (typeof nutritionGoal !== 'undefined') ? nutritionGoal : 'well';
-        var goalLabel = goal==='mass' ? 'Ganho de massa (superávit)' : goal==='fat' ? 'Perda de gordura (déficit)' : 'Bem-estar (manutenção)';
-        var extra = '';
-        if(goal === 'mass'){
-          extra = 'Superávit sugerido: <b style="color:#20e083">+' + (t.surplus||250) + ' kcal</b> acima do gasto diário.';
-        } else if(goal === 'fat'){
-          extra = 'Déficit sugerido: <b style="color:#ffbd3e">−' + (t.deficit||400) + ' kcal</b> em relação ao gasto diário.';
-        } else {
-          extra = 'Meta alinhada ao gasto diário estimado (manutenção).';
-        }
-        box.innerHTML =
-          '<div style="font-weight:900;color:#56b5ff;margin-bottom:6px">📊 Metabolismo (pelos seus dados)</div>' +
-          '<div>Metabolismo basal (TMB): <b style="color:#fff">' + (t.bmr||'—') + ' kcal</b></div>' +
-          '<div>Gasto diário estimado: <b style="color:#fff">' + (t.tdee||t.maintenance||'—') + ' kcal</b></div>' +
-          '<div>Meta calórica do objetivo: <b style="color:#ffbd3e">' + (t.kcal||'—') + ' kcal</b> · ' + goalLabel + '</div>' +
-          '<div style="margin-top:6px;color:#a8b8ca">' + extra + '</div>' +
-          '<div style="margin-top:6px;font-size:9px;color:#71839a">TMB pela fórmula Mifflin-St Jeor. Gasto diário ≈ TMB × 1,55 (atividade moderada). Ajuste o perfil (peso, altura, idade, sexo) para valores mais precisos.</div>';
-      }catch(e){}
-      return r;
-    };
-    window.renderNutrition.__htV53 = true;
-  }
-
-  /* ========== 6) Anti-travamento definitivo no Painel Master / Academia ========== */
-  function protectGmPanel(){
-    // CSS: quando aberto, nada pode roubar toque
-    if(!document.getElementById('htV53GmProtectCss')){
-      var st = document.createElement('style');
-      st.id = 'htV53GmProtectCss';
-      st.textContent =
-        '#gmRoot.show{display:block!important;visibility:visible!important;pointer-events:auto!important;opacity:1!important;z-index:2147483000!important;}' +
-        '#gmRoot.show *{pointer-events:auto;}' +
-        '#gmRoot.show button,#gmRoot.show input,#gmRoot.show select,#gmRoot.show a,' +
-        '#gmRoot.show .gmBtn,#gmRoot.show .gmNav,#gmRoot.show .gmCard,#gmRoot.show .gmIn{' +
-        'pointer-events:auto!important;touch-action:manipulation!important;-webkit-user-select:auto;}' +
-        'body.ht-gm-open #bottom{display:none!important;pointer-events:none!important;}' +
-        'body.ht-gm-open .screen{pointer-events:none!important;}' +
-        'body.ht-gm-open #gmRoot.show, body.ht-gm-open #gmRoot.show *{pointer-events:auto!important;}';
-      document.head.appendChild(st);
-    }
-
-    function markBody(){
-      try{
-        if(gmIsOpen()) document.body.classList.add('ht-gm-open');
-        else document.body.classList.remove('ht-gm-open');
-      }catch(e){}
-    }
-
-    // Observer no gmRoot
-    function attach(){
-      var gm = document.getElementById('gmRoot');
-      if(!gm){ setTimeout(attach, 500); return; }
-      if(gm.__htV53Obs) return;
-      gm.__htV53Obs = true;
-      markBody();
-      new MutationObserver(function(){
-        markBody();
-        if(gm.classList.contains('show')){
-          try{
-            gm.style.pointerEvents = 'auto';
-            gm.style.visibility = 'visible';
-            gm.style.display = 'block';
-            gm.style.opacity = '1';
-            gm.style.zIndex = '2147483000';
-          }catch(e){}
-          // ao abrir: sync contas
-          setTimeout(function(){
-            try{ mergeLocalAuthIntoGm(); pullCloudUsersIntoMaster(); }catch(e){}
-          }, 200);
-        }
-      }).observe(gm, { attributes: true, attributeFilter: ['class','style'] });
-    }
-    attach();
-
-    // Patch softUnlock / htUiUnlock para NUNCA mexer quando GM aberto
-    function guardUnlock(fnName){
-      try{
-        if(typeof window[fnName] !== 'function' || window[fnName].__htV53Guard) return;
-        var prev = window[fnName];
-        window[fnName] = function(){
-          if(gmIsOpen()) return true;
-          return prev.apply(this, arguments);
-        };
-        window[fnName].__htV53Guard = true;
-      }catch(e){}
-    }
-    guardUnlock('htUiUnlock');
-    guardUnlock('htForceUnlock');
-
-    // Impede fullUnlock de limpar o painel se estiver aberto (exceto force explícito do usuário)
-    // Já há softUnlock com gmIsOpen — reforçamos via interval leve
-    setInterval(function(){
-      markBody();
-      if(!gmIsOpen()) return;
-      try{
-        var gm = document.getElementById('gmRoot');
-        if(!gm) return;
-        if(gm.style.pointerEvents === 'none' || gm.style.visibility === 'hidden' || gm.style.display === 'none'){
-          gm.style.pointerEvents = 'auto';
-          gm.style.visibility = 'visible';
-          gm.style.display = 'block';
-          gm.style.opacity = '1';
-          gm.style.zIndex = '2147483000';
-        }
-      }catch(e){}
-      maybePullWhileGmOpen();
-    }, 2000);
-  }
-
-  /* ========== BOOT ========== */
-  function boot(){
-    try{ ensureOpenAcademyLocal(); }catch(e){}
-    try{ strengthenRegister(); }catch(e){}
-    try{ patchGmOpen(); }catch(e){}
-    try{ enhanceNutrition(); }catch(e){}
-    try{ protectGmPanel(); }catch(e){}
-    try{ mergeLocalAuthIntoGm(); }catch(e){}
-    setTimeout(function(){ try{ pullCloudUsersIntoMaster(); }catch(e){} }, 1200);
-    // reassert register wrap (outros scripts reescrevem doRegister)
-    setInterval(function(){
-      try{ strengthenRegister(); enhanceNutrition(); patchGmOpen(); }catch(e){}
-    }, 3000);
-    log('ativo: sync cadastro→Master, nutri TMB/gasto, anti-freeze GM');
-  }
-
-  if(document.readyState === 'loading'){
-    document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot, 400); });
-  } else {
-    setTimeout(boot, 400);
-  }
-  setTimeout(boot, 2000);
-})();
-</script>
-
-<!-- ===== HT FIX V54 — SYNC 2 PAINÉIS + ANTI-TRAVAMENTO MASTER ===== -->
-<script id="htFixV54SyncPanelsAntiFreeze">
-(function(){
-  'use strict';
-  var LOG = '[HT V54]';
-  function log(){ try{ console.log.apply(console, [LOG].concat([].slice.call(arguments))); }catch(e){} }
-  function now(){ return Date.now(); }
-  function OPEN_ID(){ return 'OPEN_LIVRE'; }
 
   function gmIsOpen(){
     try{
@@ -31292,7 +30595,6 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
     }catch(e){}
   }
   function gmLoad(){
-    /* Preferir o banco em memória do GymMaster (evita race com save interno) */
     try{
       if(typeof window.htGmReload === 'function'){
         var g0 = window.htGmReload();
@@ -31303,10 +30605,8 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
   }
   function gmSave(g){
     try{
-      /* Se o GymMaster expõe save, mutamos o objeto vivo e salvamos por ele */
       if(typeof window.htGmSave === 'function' && g){
         try{ localStorage.setItem('gymmasterFullV7', JSON.stringify(g)); }catch(e1){}
-        try{ window.htGmReload && window.htGmReload(); }catch(e2){}
         try{ window.htGmSave(); }catch(e3){
           localStorage.setItem('gymmasterFullV7', JSON.stringify(g||{}));
         }
@@ -31323,9 +30623,20 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
     var OPEN = OPEN_ID();
     if(!g.academies[OPEN]){
       g.academies[OPEN] = {
-        academyId: OPEN, name: 'Acesso Livre (sem academia)', inviteCode: 'LIVRE',
-        codigoAcademia: 'LIVRE', status: 'active', studentLimit: 99999, planValue: 0,
-        responsible: 'Sistema', createdAt: now(), admins: {}, students: {}, payments: {}, isOpenGroup: true
+        academyId: OPEN,
+        name: 'Acesso Livre (sem academia)',
+        inviteCode: 'LIVRE',
+        codigoAcademia: 'LIVRE',
+        status: 'active',
+        studentLimit: 99999,
+        planValue: 0,
+        responsible: 'Sistema',
+        createdAt: now(),
+        shareBrand: { brandName: 'Acesso Livre', appLink: '', primaryColor: '#168cff', showLink: true },
+        admins: {},
+        students: {},
+        payments: {},
+        isOpenGroup: true
       };
     }
     return g;
@@ -31398,12 +30709,9 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
           if(u.passHash && !a.passHash){ a.passHash = u.passHash; changed++; }
         }
       });
-      if(changed || true){
-        /* Sempre persiste o objeto vivo (mesmo 0 alterações garante OPEN_LIVRE) */
+      if(changed){
         try{ localStorage.setItem('gymmasterFullV7', JSON.stringify(g)); }catch(eLS){}
         gmSave(g);
-        try{ if(window.htGmReload) window.htGmReload(); }catch(e){}
-        try{ if(window.htGmSave) window.htGmSave(); }catch(e){}
       }
       log('auth→gm', changed, 'users auth=', Object.keys(users).length);
     }catch(e){ log('auth→gm fail', e); }
@@ -31456,6 +30764,114 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
     return changed;
   }
 
+  function mergeCloudUserIntoGm(u){
+    if(!u || !u.email) return false;
+    var email = String(u.email).trim().toLowerCase();
+    if(!email) return false;
+    var changed = false;
+    try{
+      var g = ensureOpenAcademy(gmLoad());
+      var aid = String(u.academyId || u.academiaId || '').trim();
+      if(!aid || !g.academies[aid]) aid = OPEN_ID();
+      var aca = g.academies[aid];
+      if(!aca) return false;
+      aca.students = aca.students || {};
+      var existingSid = null;
+      Object.keys(aca.students).forEach(function(sid){
+        var st = aca.students[sid];
+        if(st && String(st.email||'').trim().toLowerCase() === email) existingSid = sid;
+      });
+      var acc = g.accounts[email];
+      if(!existingSid && acc && acc.academyId === aid && acc.studentId && aca.students[acc.studentId]){
+        existingSid = acc.studentId;
+      }
+      var name = (u.profile && u.profile.name) || u.name || '';
+      var sid = existingSid || (acc && acc.studentId) || ('S' + now().toString(36).toUpperCase() + Math.random().toString(36).slice(2,4).toUpperCase());
+      if(!aca.students[sid]){
+        aca.students[sid] = {
+          studentId: sid, name: name, email: email, cpf: u.cpf || '',
+          planName: 'Mensal', value: 0, dueDate: '',
+          paymentStatus: (Number(u.paidUntil||0) > now()) ? 'paid' : 'pending',
+          accessStatus: u.blocked ? 'blocked' : 'active',
+          accessType: (aid === OPEN_ID() ? 'open' : 'academy'),
+          passHash: u.passHash || (acc && acc.passHash) || '',
+          usingApp: true,
+          lastAccess: u.lastLogin || u.lastSeen || u.updatedAt || now(),
+          createdAt: u.createdAt || now(),
+          fromSelfRegister: !!(u.fromSelfRegister || u.role === 'SELF_REGISTERED')
+        };
+        changed = true;
+      } else {
+        var st = aca.students[sid];
+        if(name && !st.name){ st.name = name; changed = true; }
+        if(u.blocked != null && st.accessStatus !== (u.blocked ? 'blocked' : 'active')){
+          st.accessStatus = u.blocked ? 'blocked' : 'active'; changed = true;
+        }
+        if(u.lastLogin && (!st.lastAccess || st.lastAccess < u.lastLogin)){
+          st.lastAccess = u.lastLogin; st.usingApp = true; changed = true;
+        }
+        if(u.passHash && !st.passHash){ st.passHash = u.passHash; changed = true; }
+      }
+      var role = (u.role === 'ACADEMY_ADMIN') ? 'ACADEMY_ADMIN' :
+                (aid === OPEN_ID() || u.fromSelfRegister || u.role === 'SELF_REGISTERED') ? 'SELF_REGISTERED' : 'STUDENT';
+      if(!g.accounts[email]){
+        g.accounts[email] = {
+          role: role, email: email, name: name, academyId: aid, studentId: sid,
+          createdAt: u.createdAt || now(),
+          fromSelfRegister: !!(u.fromSelfRegister || role === 'SELF_REGISTERED'),
+          passHash: u.passHash || (aca.students[sid] && aca.students[sid].passHash) || ''
+        };
+        changed = true;
+      } else {
+        var a = g.accounts[email];
+        if(!a.academyId){ a.academyId = aid; changed = true; }
+        if(!a.studentId){ a.studentId = sid; changed = true; }
+        if(name && !a.name){ a.name = name; changed = true; }
+        if(u.passHash && !a.passHash){ a.passHash = u.passHash; changed = true; }
+      }
+      if(changed){
+        try{ localStorage.setItem('gymmasterFullV7', JSON.stringify(g)); }catch(eLS){}
+        gmSave(g);
+        try{ if(typeof window.htGmReload === 'function') window.htGmReload(); }catch(eR){}
+      }
+      return changed;
+    }catch(e){
+      log('merge cloud fail', e);
+      return false;
+    }
+  }
+
+  function pullCloudUsersIntoMaster(){
+    var db = fb();
+    if(!db) return Promise.resolve(0);
+    var job = Promise.resolve();
+    try{
+      if(typeof window.htEnsureCloudAuth === 'function') job = window.htEnsureCloudAuth();
+    }catch(e){}
+    return job.then(function(){
+      return db.collection('users').limit(500).get();
+    }).then(function(snap){
+      var n = 0;
+      snap.forEach(function(doc){
+        var u = doc.data() || {};
+        if(!u.email) u.email = String(doc.id||'').replace(/_/g,'.');
+        u.email = String(u.email || '').trim().toLowerCase();
+        if(!u.email || u.email.indexOf('@') < 0){
+          var id = String(doc.id || '').replace(/_/g,'.');
+          if(id.indexOf('@') >= 0) u.email = id.toLowerCase();
+        }
+        if(!u.email || u.email.indexOf('@') < 0) return;
+        if(u.role === 'MASTER' || u.role === 'Admin') return;
+        if(mergeCloudUserIntoGm(u)) n++;
+      });
+      log('cloud→gm', n, 'alterações');
+      return n;
+    }).catch(function(err){
+      log('pull cloud fail', err);
+      return 0;
+    });
+  }
+
   function syncBothPanels(){
     var a = syncAuthToGm();
     var b = syncGmToAuth();
@@ -31487,19 +30903,78 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
   }
   window.htSyncBothPanels = syncBothPanels;
 
+  function strengthenRegister(){
+    if(typeof window.doRegister !== 'function' || window.doRegister.__htV56) return;
+    var prev = window.doRegister;
+    window.doRegister = async function(){
+      var ret = await prev.apply(this, arguments);
+      try{
+        var email = '';
+        try{ email = (document.getElementById('regEmail') && document.getElementById('regEmail').value || '').trim().toLowerCase(); }catch(e){}
+        if(!email && typeof getSession === 'function'){
+          var s = getSession(); if(s) email = s.email || '';
+        }
+        if(email){
+          ensureOpenAcademy();
+          try{
+            var localDb = authLoadSafe();
+            var u = (localDb.users && localDb.users[email]) || { email: email, fromSelfRegister: true };
+            u.email = email;
+            if(!u.academyId) u.academyId = OPEN_ID();
+            mergeCloudUserIntoGm(u);
+          }catch(eM){}
+          try{
+            if(typeof htPushUser === 'function'){
+              htPushUser(email, {
+                fromSelfRegister: true,
+                academyId: (function(){
+                  try{
+                    var ldb = authLoadSafe();
+                    return (ldb.users && ldb.users[email] && ldb.users[email].academyId) || OPEN_ID();
+                  }catch(e){ return OPEN_ID(); }
+                })()
+              });
+            }
+          }catch(eP){}
+          try{
+            if(typeof htSyncGymAccount === 'function'){
+              var ldb2 = authLoadSafe();
+              var uu = (ldb2.users && ldb2.users[email]) || {};
+              htSyncGymAccount({
+                email: email,
+                role: uu.academyId && uu.academyId !== OPEN_ID() ? 'STUDENT' : 'SELF_REGISTERED',
+                fromSelfRegister: true,
+                academyId: uu.academyId || OPEN_ID(),
+                studentId: null,
+                createdAt: uu.createdAt || now(),
+                lastLogin: now(),
+                blocked: false,
+                paidUntil: uu.paidUntil || null,
+                passHash: uu.passHash || null
+              });
+            }
+          }catch(eS){}
+        }
+        setTimeout(function(){ try{ syncBothPanels(); }catch(e){} }, 200);
+      }catch(e){ log('post-register', e); }
+      return ret;
+    };
+    window.doRegister.__htV56 = true;
+  }
+
   function patchAuthSave(){
-    if(typeof window.authSave === 'function' && !window.authSave.__htV54){
+    if(typeof window.authSave === 'function' && !window.authSave.__htV56){
       var prev = window.authSave;
       window.authSave = function(db){
         var r = prev.apply(this, arguments);
         setTimeout(function(){ try{ syncAuthToGm(); }catch(e){} }, 50);
         return r;
       };
-      window.authSave.__htV54 = true;
+      window.authSave.__htV56 = true;
     }
   }
   function patchRenderAdmin(){
-    if(typeof window.renderAdmin === 'function' && !window.renderAdmin.__htV54){
+    if(typeof window.renderAdmin === 'function' && !window.renderAdmin.__htV56){
       var prev = window.renderAdmin;
       window.renderAdmin = function(){
         try{ syncGmToAuth(); }catch(e){}
@@ -31507,140 +30982,136 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
         setTimeout(function(){ try{ syncAuthToGm(); }catch(e){} }, 100);
         return r;
       };
-      window.renderAdmin.__htV54 = true;
+      window.renderAdmin.__htV56 = true;
     }
   }
   function patchRegisterLogin(){
-    if(typeof window.doRegister === 'function' && !window.doRegister.__htV54){
-      var prevR = window.doRegister;
-      window.doRegister = function(){
-        var ret = prevR.apply(this, arguments);
-        setTimeout(function(){ try{ syncBothPanels(); }catch(e){} }, 200);
-        return ret;
-      };
-      window.doRegister.__htV54 = true;
-    }
-    if(typeof window.doLogin === 'function' && !window.doLogin.__htV54){
+    if(typeof window.doLogin === 'function' && !window.doLogin.__htV56){
       var prevL = window.doLogin;
       window.doLogin = function(){
         var ret = prevL.apply(this, arguments);
         setTimeout(function(){ try{ syncBothPanels(); }catch(e){} }, 200);
         return ret;
       };
-      window.doLogin.__htV54 = true;
+      window.doLogin.__htV56 = true;
     }
   }
-
-  function killBlockingOverlays(){
-    if(!gmIsOpen()) return;
-    ['restOverlay','celebrate','dayCelebrate','monthEndModal','htShareGumOverlay','htShareCamEvoStyle','htShareCamOverlay','htEvoCamOverlay','htCamV44','htEvoOnlyCamOverlay','htCatOverlay','htAccessDesk','htAccessApiPanel'].forEach(function(id){
-      try{
-        var el = document.getElementById(id);
-        if(!el) return;
-        el.classList.remove('show');
-        el.style.display = 'none';
-        el.style.pointerEvents = 'none';
-        el.style.visibility = 'hidden';
-        el.style.opacity = '0';
-        el.style.zIndex = '-1';
-      }catch(e){}
-    });
-  }
-
-  function forceGmClickable(){
-    var gm = document.getElementById('gmRoot');
-    if(!gm) return;
-    if(!gm.classList.contains('show')){
-      try{ document.body.classList.remove('ht-gm-open'); }catch(e){}
-      return;
-    }
-    try{
-      document.body.classList.add('ht-gm-open');
-      gm.style.display = 'block';
-      gm.style.visibility = 'visible';
-      gm.style.opacity = '1';
-      gm.style.pointerEvents = 'auto';
-      gm.style.zIndex = '2147483000';
-      var nodes = gm.querySelectorAll('button, a, input, select, textarea, .gmBtn, .gmNav, .gmCard, .gmItem, .gmIn, [onclick]');
-      for(var i=0;i<nodes.length;i++){
-        nodes[i].style.pointerEvents = 'auto';
-        nodes[i].style.touchAction = 'manipulation';
-      }
-      var bottom = document.getElementById('bottom');
-      if(bottom){ bottom.style.display = 'none'; bottom.style.pointerEvents = 'none'; }
-      document.querySelectorAll('.screen').forEach(function(s){ s.style.pointerEvents = 'none'; });
-    }catch(e){}
-    killBlockingOverlays();
-  }
-
-  function injectGmProtectCss(){
-    if(document.getElementById('htV54GmCss')) return;
-    var st = document.createElement('style');
-    st.id = 'htV54GmCss';
-    st.textContent =
-      'body.ht-gm-open #bottom{display:none!important;pointer-events:none!important;z-index:-1!important;}' +
-      'body.ht-gm-open .screen{pointer-events:none!important;}' +
-      'body.ht-gm-open #gmRoot.show{display:block!important;visibility:visible!important;opacity:1!important;pointer-events:auto!important;z-index:2147483000!important;}' +
-      'body.ht-gm-open #gmRoot.show, body.ht-gm-open #gmRoot.show *{pointer-events:auto!important;}' +
-      'body.ht-gm-open #gmRoot.show button, body.ht-gm-open #gmRoot.show .gmBtn,' +
-      'body.ht-gm-open #gmRoot.show input, body.ht-gm-open #gmRoot.show select,' +
-      'body.ht-gm-open #gmRoot.show a, body.ht-gm-open #gmRoot.show .gmNav{pointer-events:auto!important;touch-action:manipulation!important;}' +
-      'body.ht-gm-open #restOverlay:not(.show), body.ht-gm-open #celebrate:not(.show),' +
-      'body.ht-gm-open #dayCelebrate:not(.show), body.ht-gm-open #monthEndModal:not(.show){display:none!important;pointer-events:none!important;z-index:-1!important;}';
-    document.head.appendChild(st);
-  }
-
-  function watchGm(){
-    var gm = document.getElementById('gmRoot');
-    if(!gm){ setTimeout(watchGm, 400); return; }
-    if(gm.__htV54Obs) return;
-    gm.__htV54Obs = true;
-    new MutationObserver(function(){
-      forceGmClickable();
-      if(gmIsOpen()) setTimeout(function(){ try{ syncBothPanels(); }catch(e){} }, 150);
-    }).observe(gm, { attributes:true, attributeFilter:['class','style'] });
-  }
-
-  function guardUnlockers(){
-    ['htUiUnlock','htForceUnlock','softUnlock','fullUnlock'].forEach(function(name){
-      try{
-        if(typeof window[name] !== 'function' || window[name].__htV54Guard) return;
-        var prev = window[name];
-        window[name] = function(){
-          if(gmIsOpen()){ forceGmClickable(); return true; }
-          return prev.apply(this, arguments);
-        };
-        window[name].__htV54Guard = true;
-      }catch(e){}
-    });
-  }
-
   function patchOpen(){
     ['htOpenMasterAccess','htOpenAcademiaAccess'].forEach(function(name){
-      if(typeof window[name] !== 'function' || window[name].__htV54) return;
+      if(typeof window[name] !== 'function' || window[name].__htV56) return;
       var prev = window[name];
       window[name] = function(){
         try{ syncBothPanels(); }catch(e){}
         var r = prev.apply(this, arguments);
-        setTimeout(forceGmClickable, 50);
-        setTimeout(forceGmClickable, 200);
-        setTimeout(function(){ try{ syncBothPanels(); if(window.htGmReload) window.htGmReload(); }catch(e){} }, 400);
+        setTimeout(function(){
+          try{
+            syncBothPanels();
+            pullCloudUsersIntoMaster().then(function(){
+              try{ if(window.htGmReload) window.htGmReload(); }catch(e){}
+            });
+          }catch(e){}
+        }, 400);
         return r;
       };
-      window[name].__htV54 = true;
+      window[name].__htV56 = true;
     });
   }
 
+  function enhanceNutrition(){
+    if(typeof window.calcNutritionTargets !== 'function') return;
+    if(window.calcNutritionTargets.__htV56) return;
+    var prevCalc = window.calcNutritionTargets;
+    window.calcNutritionTargets = function(){
+      var t = prevCalc.apply(this, arguments) || {};
+      try{
+        var p = (typeof state !== 'undefined' && state.profile) || {age:34,weight:75,height:172,gender:'masculino'};
+        var age = Number(p.age)||34, weight = Number(p.weight)||75, height = Number(p.height)||172;
+        if(height>0 && height<3) height = height*100;
+        if(height<100 || height>250) height = 172;
+        var sex = (String(p.gender||'').toLowerCase().indexOf('fem')>=0) ? -161 : 5;
+        var bmr = Math.round(10*weight + 6.25*height - 5*age + sex);
+        var act = Number(p.activity);
+        if(!(act>=1.1 && act<=2.2)) act = 1.725;
+        var maintenance = Math.round(bmr * act);
+        if(t.maintenance == null) t.maintenance = maintenance;
+        t.bmr = bmr;
+        t.tdee = t.maintenance || maintenance;
+        var goal = (typeof nutritionGoal !== 'undefined') ? nutritionGoal : ((state && state.nutrition && state.nutrition.goal) || 'well');
+        if(goal === 'mass') t.surplus = Math.max(0, (t.kcal||0) - t.tdee);
+        else if(goal === 'fat') t.deficit = Math.max(0, t.tdee - (t.kcal||0));
+        else { t.surplus = 0; t.deficit = 0; }
+      }catch(e){}
+      return t;
+    };
+    window.calcNutritionTargets.__htV56 = true;
+
+    if(typeof window.renderNutrition !== 'function') return;
+    if(window.renderNutrition.__htV56) return;
+    var prevRender = window.renderNutrition;
+    window.renderNutrition = function(){
+      var r = prevRender.apply(this, arguments);
+      try{
+        var t = window.calcNutritionTargets();
+        var host = document.querySelector('.nutriTargets');
+        if(!host) return r;
+        var box = document.getElementById('htNutriMetaBox');
+        if(!box){
+          box = document.createElement('div');
+          box.id = 'htNutriMetaBox';
+          box.style.cssText = 'margin-top:10px;padding:10px;border-radius:12px;background:#050c16;border:1px solid #29405d;font-size:11px;line-height:1.45;color:#c5d3e3';
+          host.appendChild(box);
+        }
+        var goal = (typeof nutritionGoal !== 'undefined') ? nutritionGoal : 'well';
+        var goalLabel = goal==='mass' ? 'Ganho de massa (superávit)' : goal==='fat' ? 'Perda de gordura (déficit)' : 'Bem-estar (manutenção)';
+        var extra = '';
+        if(goal === 'mass'){
+          extra = 'Superávit sugerido: <b style="color:#20e083">+' + (t.surplus||250) + ' kcal</b> acima do gasto diário.';
+        } else if(goal === 'fat'){
+          extra = 'Déficit sugerido: <b style="color:#ffbd3e">−' + (t.deficit||400) + ' kcal</b> em relação ao gasto diário.';
+        } else {
+          extra = 'Meta alinhada ao gasto diário estimado (manutenção).';
+        }
+        var actShow = 1.725;
+        try{
+          var pp = (typeof state!=='undefined' && state.profile) ? state.profile : {};
+          actShow = Number(pp.activity);
+          if(!(actShow>=1.1 && actShow<=2.2)) actShow = 1.725;
+        }catch(e){}
+        box.innerHTML =
+          '<div style="font-weight:900;color:#56b5ff;margin-bottom:6px">📊 Cálculo pelos seus dados</div>' +
+          '<div style="margin-bottom:4px;font-size:10px;color:#8ea0b8">TMB (exato) = só peso + altura + idade + sexo (Mifflin-St Jeor)</div>' +
+          '<div>Metabolismo basal (TMB): <b style="color:#fff">' + (t.bmr||'—') + ' kcal/dia</b></div>' +
+          '<div style="margin-top:8px;font-size:10px;color:#8ea0b8">Gasto diário = TMB × nível de atividade (ninguém gasta só o basal)</div>' +
+          '<div>Gasto diário estimado: <b style="color:#fff">' + (t.tdee||t.maintenance||'—') + ' kcal</b> <span style="color:#8ea0b8">(×' + actShow + ')</span></div>' +
+          '<div>Meta calórica do objetivo: <b style="color:#ffbd3e">' + (t.kcal||'—') + ' kcal</b> · ' + goalLabel + '</div>' +
+          '<div style="margin-top:6px;color:#a8b8ca">' + extra + '</div>' +
+          '<div style="margin-top:6px;font-size:9px;color:#71839a">Sem o nível de atividade no Perfil, o app só consegue calcular o basal. O gasto real de quem treina é sempre maior que o TMB.</div>';
+      }catch(e){}
+      return r;
+    };
+    window.renderNutrition.__htV56 = true;
+  }
+
+  var _lastPull = 0;
+  function maybePullWhileGmOpen(){
+    if(!gmIsOpen()) return;
+    var t = now();
+    if(t - _lastPull < 25000) return;
+    _lastPull = t;
+    try{ syncBothPanels(); pullCloudUsersIntoMaster(); }catch(e){}
+  }
+
   function boot(){
-    injectGmProtectCss();
-    patchAuthSave();
-    patchRenderAdmin();
-    patchRegisterLogin();
-    patchOpen();
-    guardUnlockers();
-    watchGm();
+    try{ ensureOpenAcademy(); }catch(e){}
+    try{ strengthenRegister(); }catch(e){}
+    try{ patchAuthSave(); }catch(e){}
+    try{ patchRenderAdmin(); }catch(e){}
+    try{ patchRegisterLogin(); }catch(e){}
+    try{ patchOpen(); }catch(e){}
+    try{ enhanceNutrition(); }catch(e){}
     try{ syncBothPanels(); }catch(e){}
-    log('sync 2 painéis + anti-freeze Master ativo');
+    setTimeout(function(){ try{ pullCloudUsersIntoMaster(); }catch(e){} }, 1200);
+    log('sync único + nutri ativo (anti-freeze = V55)');
   }
 
   if(document.readyState === 'loading'){
@@ -31652,14 +31123,603 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
 
   setInterval(function(){
     try{
-      patchAuthSave(); patchRenderAdmin(); patchOpen(); guardUnlockers();
-      if(gmIsOpen()) forceGmClickable();
+      strengthenRegister();
+      patchAuthSave();
+      patchRenderAdmin();
+      patchRegisterLogin();
+      patchOpen();
+      enhanceNutrition();
+      maybePullWhileGmOpen();
     }catch(e){}
-  }, 2000);
+  }, 10000);
 
   setInterval(function(){
     try{ if(gmIsOpen()) syncBothPanels(); }catch(e){}
-  }, 8000);
+  }, 15000);
+})();
+</script>
+
+<!-- ===== HT FIX V55 — ANTI-CONGELAMENTO ÚNICO (GymMaster + Treino) ===== -->
+<script id="htFixV55AntiFreezeFinal">
+(function(){
+  'use strict';
+  var LOG = '[HT V55]';
+  function log(){ try{ console.log.apply(console, [LOG].concat([].slice.call(arguments))); }catch(e){} }
+
+  var OVERLAY_IDS = [
+    'restOverlay','celebrate','dayCelebrate','monthEndModal',
+    'htShareGumOverlay','htShareCamEvoStyle','htShareCamOverlay',
+    'htEvoCamOverlay','htCamV44','htEvoOnlyCamOverlay',
+    'htCatOverlay','htAccessDesk','htAccessApiPanel'
+  ];
+
+  function gmIsOpen(){
+    try{
+      var gm = document.getElementById('gmRoot');
+      return !!(gm && gm.classList.contains('show'));
+    }catch(e){ return false; }
+  }
+
+  function isAuthScreenActive(){
+    try{
+      var ids = ['authWelcome','paywall','authAdminLogin','authRegister','admin'];
+      for(var i=0;i<ids.length;i++){
+        var el = document.getElementById(ids[i]);
+        if(el && el.classList.contains('active')) return true;
+      }
+    }catch(e){}
+    return false;
+  }
+
+  function closeGhostOverlays(){
+    OVERLAY_IDS.forEach(function(id){
+      try{
+        var el = document.getElementById(id);
+        if(!el) return;
+        if(el.classList.contains('show')){
+          el.style.removeProperty('pointer-events');
+          el.style.setProperty('pointer-events','auto','important');
+          el.style.visibility = 'visible';
+          el.style.opacity = '1';
+          if(id === 'celebrate') el.style.display = 'grid';
+          else if(id === 'restOverlay' || id === 'dayCelebrate' || id === 'monthEndModal')
+            el.style.display = 'flex';
+          return;
+        }
+        el.classList.remove('show');
+        el.style.display = 'none';
+        el.style.visibility = 'hidden';
+        el.style.pointerEvents = 'none';
+        el.style.opacity = '0';
+        try{ el.style.zIndex = '-1'; }catch(e){}
+      }catch(e){}
+    });
+  }
+
+  function restoreAppTouch(){
+    try{
+      document.body.style.pointerEvents = 'auto';
+      document.documentElement.style.pointerEvents = 'auto';
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+      document.body.classList.remove('ht-gm-open');
+    }catch(e){}
+    try{
+      document.querySelectorAll('.screen').forEach(function(s){
+        s.style.removeProperty('pointer-events');
+        if(s.classList.contains('active')){
+          s.style.pointerEvents = 'auto';
+          s.style.visibility = 'visible';
+          s.style.opacity = '1';
+        }
+      });
+    }catch(e){}
+    try{
+      var bottom = document.getElementById('bottom');
+      if(bottom){
+        if(isAuthScreenActive() || gmIsOpen()){
+          bottom.style.display = 'none';
+          bottom.style.pointerEvents = 'none';
+        } else {
+          bottom.style.display = 'flex';
+          bottom.style.pointerEvents = 'auto';
+          bottom.style.visibility = 'visible';
+          bottom.style.opacity = '1';
+          bottom.style.zIndex = '1200';
+          bottom.querySelectorAll('.nav, button').forEach(function(b){
+            b.style.pointerEvents = 'auto';
+            b.style.touchAction = 'manipulation';
+          });
+        }
+      }
+    }catch(e){}
+    try{
+      document.querySelectorAll(
+        '.day, .exercise, .bigBtn, .authBtn, .actionCard, .nav, #htBtnCompleteEx, .seriesDot, .seriesBtns button, .tab'
+      ).forEach(function(el){
+        if(el.disabled) return;
+        el.style.pointerEvents = 'auto';
+        el.style.touchAction = 'manipulation';
+      });
+    }catch(e){}
+  }
+
+  function lockAppBehindGm(){
+    try{
+      document.body.classList.add('ht-gm-open');
+      var gm = document.getElementById('gmRoot');
+      if(!gm) return;
+      gm.style.display = 'block';
+      gm.style.visibility = 'visible';
+      gm.style.opacity = '1';
+      gm.style.pointerEvents = 'auto';
+      gm.style.zIndex = '2147483000';
+      var bottom = document.getElementById('bottom');
+      if(bottom){
+        bottom.style.display = 'none';
+        bottom.style.pointerEvents = 'none';
+      }
+      closeGhostOverlays();
+    }catch(e){}
+  }
+
+  function safeUnlock(opts){
+    opts = opts || {};
+    try{
+      if(gmIsOpen() && !opts.forceCloseGm){
+        lockAppBehindGm();
+        return true;
+      }
+      if(opts.forceCloseGm){
+        var gm = document.getElementById('gmRoot');
+        if(gm){
+          gm.classList.remove('show');
+          gm.style.display = 'none';
+          gm.style.visibility = 'hidden';
+          gm.style.pointerEvents = 'none';
+          gm.style.zIndex = '-1';
+        }
+      }
+      closeGhostOverlays();
+      restoreAppTouch();
+    }catch(e){ log('safeUnlock err', e); }
+    return true;
+  }
+
+  window.htUiUnlock = function(opts){ return safeUnlock(opts||{}); };
+  window.htForceUnlock = function(){ return safeUnlock({ forceCloseGm: false }); };
+  window.htHardUnlock = function(){ return safeUnlock({ forceCloseGm: true }); };
+  window.htSafeUnlock = safeUnlock;
+
+  if(!document.getElementById('htV55AntiFreezeCss')){
+    var st = document.createElement('style');
+    st.id = 'htV55AntiFreezeCss';
+    st.textContent =
+      'body.ht-gm-open #bottom{display:none!important;pointer-events:none!important;}' +
+      'body.ht-gm-open .screen{pointer-events:none!important;}' +
+      'body.ht-gm-open #gmRoot.show{display:block!important;visibility:visible!important;opacity:1!important;pointer-events:auto!important;z-index:2147483000!important;}' +
+      'body.ht-gm-open #gmRoot.show *{pointer-events:auto!important;}' +
+      '#restOverlay:not(.show),#celebrate:not(.show),#dayCelebrate:not(.show),#monthEndModal:not(.show){' +
+      'display:none!important;pointer-events:none!important;visibility:hidden!important;}' +
+      '#restOverlay.show,#dayCelebrate.show,#monthEndModal.show{display:flex!important;pointer-events:auto!important;visibility:visible!important;}' +
+      '#celebrate.show{display:grid!important;pointer-events:auto!important;visibility:visible!important;}' +
+      'body:not(.ht-gm-open) .screen.active{pointer-events:auto!important;}' +
+      'body:not(.ht-gm-open) #bottom{pointer-events:auto!important;}';
+    document.head.appendChild(st);
+  }
+
+  function watchGm(){
+    var gm = document.getElementById('gmRoot');
+    if(!gm){ setTimeout(watchGm, 400); return; }
+    if(gm.__htV55Obs) return;
+    gm.__htV55Obs = true;
+    var lastOpen = gmIsOpen();
+    new MutationObserver(function(){
+      var open = gmIsOpen();
+      if(open) lockAppBehindGm();
+      else if(lastOpen && !open){
+        setTimeout(function(){ safeUnlock(); }, 10);
+        setTimeout(function(){ safeUnlock(); }, 120);
+        setTimeout(function(){ safeUnlock(); }, 400);
+      }
+      lastOpen = open;
+    }).observe(gm, { attributes: true, attributeFilter: ['class','style'] });
+  }
+
+  function patchShow(){
+    if(typeof window.show !== 'function' || window.show.__htV55) return;
+    var prev = window.show;
+    window.show = function(id){
+      var r;
+      try{ r = prev.apply(this, arguments); }
+      catch(err){ log('show error', err); safeUnlock(); throw err; }
+      setTimeout(function(){ safeUnlock(); }, 20);
+      setTimeout(function(){ safeUnlock(); }, 150);
+      return r;
+    };
+    window.show.__htV55 = true;
+  }
+
+  function patchWorkout(){
+    try{
+      if(typeof window.openDay === 'function' && !window.openDay.__htV55){
+        var prevO = window.openDay;
+        window.openDay = function(){
+          var r = prevO.apply(this, arguments);
+          setTimeout(function(){ safeUnlock(); }, 30);
+          return r;
+        };
+        window.openDay.__htV55 = true;
+      }
+    }catch(e){}
+    try{
+      if(typeof window.completeCurrent === 'function' && !window.completeCurrent.__htV55){
+        var prevC = window.completeCurrent;
+        window.completeCurrent = function(){
+          var r = prevC.apply(this, arguments);
+          setTimeout(function(){ safeUnlock(); }, 40);
+          return r;
+        };
+        window.completeCurrent.__htV55 = true;
+      }
+    }catch(e){}
+  }
+
+  function bindEmergency(){
+    if(window.__htV55Emerg) return;
+    window.__htV55Emerg = true;
+    var taps = [];
+    document.addEventListener('touchstart', function(ev){
+      var t = ev.touches && ev.touches[0];
+      if(!t) return;
+      if(t.clientX < 80 && t.clientY < 80){
+        var now = Date.now();
+        taps.push(now);
+        taps = taps.filter(function(x){ return now - x < 1200; });
+        if(taps.length >= 3){
+          taps = [];
+          if(gmIsOpen()){
+            lockAppBehindGm();
+            try{ if(typeof toast==='function') toast('Painel Master reativado'); }catch(e){}
+          } else {
+            safeUnlock();
+            try{
+              document.querySelectorAll('.screen').forEach(function(s){
+                s.style.removeProperty('pointer-events');
+                s.style.pointerEvents = 'auto';
+              });
+            }catch(e){}
+            try{ if(typeof toast==='function') toast('Interface destravada'); }catch(e){}
+          }
+        }
+      }
+    }, { passive: true });
+  }
+
+  function startWatch(){
+    if(window.__htV55Watch) return;
+    window.__htV55Watch = setInterval(function(){
+      try{
+        if(gmIsOpen()){ lockAppBehindGm(); return; }
+        if(document.body.classList.contains('ht-gm-open')){
+          document.body.classList.remove('ht-gm-open');
+          restoreAppTouch();
+        }
+        var stuck = false;
+        ['restOverlay','dayCelebrate','celebrate','monthEndModal'].forEach(function(id){
+          var el = document.getElementById(id);
+          if(!el || el.classList.contains('show')) return;
+          var d = (el.style && el.style.display) || '';
+          if(d === 'flex' || d === 'block' || d === 'grid' || el.style.pointerEvents === 'auto') stuck = true;
+        });
+        var active = document.querySelector('.screen.active');
+        if(active && window.getComputedStyle(active).pointerEvents === 'none') stuck = true;
+        if(stuck) safeUnlock();
+      }catch(e){}
+    }, 4000);
+  }
+
+  function patchOpen(){
+    ['htOpenMasterAccess','htOpenAcademiaAccess'].forEach(function(name){
+      if(typeof window[name] !== 'function' || window[name].__htV55) return;
+      var prev = window[name];
+      window[name] = function(){
+        var r = prev.apply(this, arguments);
+        setTimeout(function(){ if(gmIsOpen()) lockAppBehindGm(); }, 50);
+        setTimeout(function(){ if(gmIsOpen()) lockAppBehindGm(); }, 250);
+        return r;
+      };
+      window[name].__htV55 = true;
+    });
+  }
+
+  function boot(){
+    patchShow(); patchWorkout(); patchOpen();
+    bindEmergency(); watchGm(); startWatch();
+    if(gmIsOpen()) lockAppBehindGm(); else safeUnlock();
+    log('anti-congelamento único ativo');
+  }
+
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot, 250); });
+  } else {
+    setTimeout(boot, 250);
+  }
+  setTimeout(boot, 1200);
+
+  setInterval(function(){
+    try{
+      patchShow(); patchWorkout(); patchOpen();
+      window.htUiUnlock = function(opts){ return safeUnlock(opts||{}); };
+      window.htForceUnlock = function(){ return safeUnlock({ forceCloseGm: false }); };
+    }catch(e){}
+  }, 3000);
+})();
+</script>
+
+
+<!-- ===== HT FIX V57 — câmera única + share após 4 ex + reset week + observers ===== -->
+<script id="htFixV57StabilityPolish">
+(function(){
+  'use strict';
+  var LOG = '[HT V57]';
+  function log(){ try{ console.log.apply(console, [LOG].concat([].slice.call(arguments))); }catch(e){} }
+
+  /* ---- Câmera: uma autoridade, sem loop 800ms ---- */
+  function lockCameraOnce(){
+    try{
+      if(typeof window.htShareInAppCameraOnly === 'function'){
+        window.openNativeShareCamera = window.htShareInAppCameraOnly;
+        window.openShareCameraInApp = window.htShareInAppCameraOnly;
+        window.openNativeShareCameraOnly = window.htShareInAppCameraOnly;
+      }
+    }catch(e){}
+  }
+
+  /* ---- Garantir share ao concluir 4 principais ---- */
+  function patchComplete(){
+    if(typeof window.completeCurrent !== 'function' || window.completeCurrent.__htV57) return;
+    var prev = window.completeCurrent;
+    window.completeCurrent = function(){
+      var ret = prev.apply(this, arguments);
+      try{
+        var dayIdx = (typeof currentDay !== 'undefined') ? currentDay : 0;
+        if(typeof isDayMainDone === 'function' && isDayMainDone(dayIdx)){
+          window.__htShareAllowed = true;
+          window.__htBlockShareFromEvo = false;
+          setTimeout(function(){
+            try{
+              var dayEl = document.getElementById('dayCelebrate');
+              if(!dayEl || !dayEl.classList.contains('show')){
+                if(typeof window.openDayCelebrate === 'function') window.openDayCelebrate();
+              }
+            }catch(e){}
+          }, 200);
+        }
+      }catch(e){}
+      return ret;
+    };
+    window.completeCurrent.__htV57 = true;
+  }
+
+  /* ---- Garantir confirmReset limpa dayDone ---- */
+  function patchReset(){
+    if(typeof window.confirmReset !== 'function' || window.confirmReset.__htV57) return;
+    var prev = window.confirmReset;
+    window.confirmReset = function(){
+      var ret = prev.apply(this, arguments);
+      try{
+        if(typeof state !== 'undefined' && state){
+          state.dayDone = {};
+          state.done = state.done || {};
+          // se usuário confirmou, prev já zerou done; reforça dayDone
+          if(typeof save === 'function') save();
+          if(typeof renderHome === 'function') renderHome();
+          document.querySelectorAll('.day.done, .day[data-done="1"]').forEach(function(el){
+            el.classList.remove('done');
+            el.removeAttribute('data-done');
+          });
+        }
+      }catch(e){}
+      return ret;
+    };
+    window.confirmReset.__htV57 = true;
+  }
+
+  /* Reforço: interceptar clique no botão zerar se confirmReset já foi patchado */
+  function wireResetButtons(){
+    try{
+      document.querySelectorAll('button.reset, [onclick*="confirmReset"]').forEach(function(btn){
+        if(btn.__htV57Reset) return;
+        btn.__htV57Reset = true;
+        btn.addEventListener('click', function(){
+          setTimeout(function(){
+            try{
+              if(typeof state !== 'undefined' && state && state.done && Object.keys(state.done).length === 0){
+                state.dayDone = {};
+                if(typeof save === 'function') save();
+                if(typeof renderHome === 'function') renderHome();
+                document.querySelectorAll('.day.done').forEach(function(el){
+                  el.classList.remove('done');
+                  el.removeAttribute('data-done');
+                });
+              }
+            }catch(e){}
+          }, 100);
+        }, true);
+      });
+    }catch(e){}
+  }
+
+  function boot(){
+    lockCameraOnce();
+    patchComplete();
+    patchReset();
+    wireResetButtons();
+    log('câmera estável + share 4ex + reset dayDone');
+  }
+
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot, 300); });
+  } else {
+    setTimeout(boot, 300);
+  }
+  setTimeout(boot, 1500);
+  // reassert leve (raro) — não a cada 800ms
+  setInterval(function(){
+    try{ lockCameraOnce(); patchComplete(); patchReset(); }catch(e){}
+  }, 15000);
+})();
+</script>
+
+
+<!-- ===== HT FIX V58 — força abertura do compartilhamento após 4 exercícios ===== -->
+<script id="htFixV58ForceShare">
+(function(){
+  'use strict';
+  function forceShowShare(){
+    try{ window.__htShareAllowed = true; window.__htBlockShareFromEvo = false; }catch(e){}
+    var day = document.getElementById('dayCelebrate');
+    if(!day) return false;
+    day.classList.add('show');
+    day.style.setProperty('display','flex','important');
+    day.style.setProperty('visibility','visible','important');
+    day.style.setProperty('pointer-events','auto','important');
+    day.style.setProperty('opacity','1','important');
+    day.style.setProperty('z-index','2147483000','important');
+    return true;
+  }
+
+  function tryOpenShare(){
+    try{ window.__htShareAllowed = true; window.__htBlockShareFromEvo = false; }catch(e){}
+    try{
+      if(typeof window.openDayCelebrate === 'function') window.openDayCelebrate();
+    }catch(e){ console.warn('[V58] openDayCelebrate', e); }
+    forceShowShare();
+  }
+
+  // Substitui completeCurrent por versão que SEMPRE abre share no 4º
+  function patch(){
+    if(typeof window.completeCurrent !== 'function') return;
+    if(window.completeCurrent.__htV58) return;
+    var prev = window.completeCurrent;
+    window.completeCurrent = function(){
+      var beforeDone = false;
+      try{
+        if(typeof isDayMainDone === 'function' && typeof currentDay !== 'undefined')
+          beforeDone = !!isDayMainDone(currentDay);
+      }catch(e){}
+      var ret = prev.apply(this, arguments);
+      try{
+        var afterDone = false;
+        try{
+          if(typeof isDayMainDone === 'function' && typeof currentDay !== 'undefined')
+            afterDone = !!isDayMainDone(currentDay);
+        }catch(e){}
+        // Se o dia ficou completo agora, ou já estava e concluiu o último
+        if(afterDone){
+          try{ window.__htShareAllowed = true; window.__htBlockShareFromEvo = false; }catch(e){}
+          // deixa os treinadores aparecerem ~1,5s antes do share
+          try{ if(typeof showExerciseCelebrate==='function') showExerciseCelebrate(); }catch(e){}
+          setTimeout(tryOpenShare, 1600);
+        }
+      }catch(e){ console.warn('[V58] after complete', e); }
+      return ret;
+    };
+    window.completeCurrent.__htV58 = true;
+  }
+
+  // Botão Concluir: captura em bubble também
+  function wireBtn(){
+    try{
+      var btn = document.getElementById('htBtnCompleteEx');
+      if(!btn || btn.__htV58) return;
+      btn.__htV58 = true;
+      btn.addEventListener('click', function(){
+        setTimeout(function(){
+          try{
+            if(typeof isDayMainDone === 'function' && typeof currentDay !== 'undefined' && isDayMainDone(currentDay)){
+              tryOpenShare();
+            }
+          }catch(e){}
+        }, 150);
+        setTimeout(function(){
+          try{
+            if(typeof isDayMainDone === 'function' && typeof currentDay !== 'undefined' && isDayMainDone(currentDay)){
+              tryOpenShare();
+            }
+          }catch(e){}
+        }, 500);
+      }, true);
+    }catch(e){}
+  }
+
+  // Impede ShareGate de fechar se flag estiver ligada
+  function guardGate(){
+    try{
+      var day = document.getElementById('dayCelebrate');
+      if(!day || day.__htV58Guard) return;
+      day.__htV58Guard = true;
+      new MutationObserver(function(){
+        if(!window.__htShareAllowed) return;
+        if(!day.classList.contains('show') || day.style.display === 'none'){
+          // alguém fechou indevidamente com flag ainda true → reabre
+          try{
+            if(typeof isDayMainDone === 'function' && typeof currentDay !== 'undefined' && isDayMainDone(currentDay)){
+              forceShowShare();
+            }
+          }catch(e){}
+        }
+      }).observe(day, { attributes:true, attributeFilter:['class','style'] });
+    }catch(e){}
+  }
+
+  function boot(){
+    patch();
+    wireBtn();
+    guardGate();
+    try{ console.log('[HT V58] force share após 4 exercícios'); }catch(e){}
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot,200); });
+  else setTimeout(boot,200);
+  setTimeout(boot, 1000);
+  setInterval(function(){ try{ patch(); wireBtn(); }catch(e){} }, 8000);
+})();
+</script>
+
+
+<script id="htActivityProfileFill">
+(function(){
+  function fill(){
+    try{
+      var sel = document.getElementById('pactivity');
+      if(!sel) return;
+      var a = (typeof state!=='undefined' && state.profile && state.profile.activity != null)
+        ? Number(state.profile.activity) : 1.725;
+      if(!(a>=1.1 && a<=2.2)) a = 1.725;
+      // match option
+      var opts = sel.options;
+      var best = '1.725';
+      for(var i=0;i<opts.length;i++){
+        if(Math.abs(parseFloat(opts[i].value)-a)<0.01){ best=opts[i].value; break; }
+      }
+      sel.value = best;
+    }catch(e){}
+  }
+  function patchShow(){
+    if(typeof window.show!=='function' || window.show.__htActFill) return;
+    var prev = window.show;
+    window.show = function(id){
+      var r = prev.apply(this, arguments);
+      if(id==='profile' || id==='nutrition') setTimeout(fill, 30);
+      return r;
+    };
+    window.show.__htActFill = true;
+  }
+  function boot(){ fill(); patchShow(); }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot,400); });
+  else setTimeout(boot,400);
+  setInterval(patchShow, 10000);
 })();
 </script>
 
