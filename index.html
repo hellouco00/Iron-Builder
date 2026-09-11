@@ -1026,6 +1026,26 @@ body:has(#authWelcome.active) #bottom {
   min-height: 40px;
 }
 </style>
+
+<style id="htMasterTouchCss">
+body.ht-gm-open #gmRoot.show{
+  pointer-events:auto !important;
+  z-index:2147483000 !important;
+  touch-action:manipulation !important;
+}
+body.ht-gm-open #gmRoot.show .gmBtn,
+body.ht-gm-open #gmRoot.show .gmIcon,
+body.ht-gm-open #gmRoot.show .gmNav button,
+body.ht-gm-open #gmRoot.show .gmCard,
+body.ht-gm-open #gmRoot.show .gmOpenUnit{
+  pointer-events:auto !important;
+  touch-action:manipulation !important;
+}
+body.ht-gm-open #bottom{
+  display:none !important;
+  pointer-events:none !important;
+}
+</style>
 </head>
 <body>
 <div class="app">
@@ -15839,8 +15859,14 @@ function getSess() {
     pass = String(pass || '');
     if (!raw) return { error: 'Informe o e-mail, CPF ou ID do aluno.' };
 
-    // Primeiro acesso (academia deixou aluno criar senha): e-mail ok, senha vazia → tela criar senha
+    // Primeiro acesso (academia deixou aluno criar senha): e-mail/CPF/ID ok, senha vazia → tela criar senha
+    // V63 FIX: NÃO comparar CPF vazio com vazio (digitando NOME caía em aluno aleatório sem senha)
     if (!pass) {
+      var keyDigits = key.replace(/\D/g, '');
+      var looksLikeName = /[a-zà-ú]/i.test(raw) && raw.indexOf('@') < 0 && keyDigits.length < 5;
+      if (looksLikeName) {
+        return { error: 'Use e-mail, CPF ou ID do aluno — não o nome. O nome não identifica o login.' };
+      }
       var needCandidates = [];
       Object.keys(d.academies || {}).forEach(function (aid) {
         var ac = d.academies[aid];
@@ -15849,13 +15875,18 @@ function getSess() {
           var st = ac.students[sid];
           if (!st) return;
           var em = String(st.email || '').toLowerCase();
-          if (em === key || String(st.studentId || '').toLowerCase() === key ||
-              String(st.cpf || '').replace(/\D/g, '') === key.replace(/\D/g, '') ||
-              String(st.personId || '').toLowerCase() === key ||
-              String(st.benefitId || '').toLowerCase() === key) {
-            if (!st.passHash) {
-              needCandidates.push({ academyId: aid, studentId: sid, academyName: ac.name, student: st });
-            }
+          var stId = String(st.studentId || '').toLowerCase();
+          var stCpf = String(st.cpf || '').replace(/\D/g, '');
+          var stPerson = String(st.personId || '').toLowerCase();
+          var stBen = String(st.benefitId || '').toLowerCase();
+          var match = false;
+          if (em && em === key) match = true;
+          else if (stId && stId === key) match = true;
+          else if (keyDigits.length >= 11 && stCpf && stCpf === keyDigits) match = true;
+          else if (stPerson && stPerson === key) match = true;
+          else if (stBen && stBen === key) match = true;
+          if (match && !st.passHash) {
+            needCandidates.push({ academyId: aid, studentId: sid, academyName: ac.name, student: st });
           }
         });
       });
@@ -15992,12 +16023,22 @@ function getSess() {
     // Permite e-mail, ID único (PES-/S-) ou identificador do benefício.
     if (!acc || acc.role !== 'STUDENT') {
       var matches=[];
+      var keyDigits2 = key.replace(/\D/g,'');
       Object.keys(d.academies||{}).forEach(function(aid){
         var ac=d.academies[aid]; Object.values(ac.students||{}).forEach(function(st){
           if(!st) return;
           var em=String(st.email||'').toLowerCase();
-          if(em===key || String(st.studentId||'').toLowerCase()===key || String(st.personId||'').toLowerCase()===key || String(st.cpf||'').replace(/\D/g,'')===key.replace(/\D/g,'') || String(st.benefitId||'').toLowerCase()===key)
-            matches.push({academyId:aid,studentId:st.studentId,email:st.email,student:st});
+          var stId=String(st.studentId||'').toLowerCase();
+          var stCpf=String(st.cpf||'').replace(/\D/g,'');
+          var stPerson=String(st.personId||'').toLowerCase();
+          var stBen=String(st.benefitId||'').toLowerCase();
+          var ok=false;
+          if(em && em===key) ok=true;
+          else if(stId && stId===key) ok=true;
+          else if(keyDigits2.length>=11 && stCpf && stCpf===keyDigits2) ok=true;
+          else if(stPerson && stPerson===key) ok=true;
+          else if(stBen && stBen===key) ok=true;
+          if(ok) matches.push({academyId:aid,studentId:st.studentId,email:st.email,student:st});
         });
       });
       if(!matches.length) return {error:'Conta inexistente. Crie a conta em “Criar conta” ou peça o cadastro à academia.'};
@@ -16162,6 +16203,8 @@ function getSess() {
     r.style.opacity = '1';
     r.style.zIndex = '2147483000';
     r.style.touchAction = 'manipulation';
+    try { document.body.classList.add('ht-gm-open'); } catch (eB) {}
+    try { if (typeof window.htForceGmTouch === 'function') window.htForceGmTouch(); } catch (eT) {}
   }
   function closeUI() {
     var r = document.getElementById('gmRoot');
@@ -16528,7 +16571,14 @@ function getSess() {
   }
 
   var stack = [];
-  function go(fn) { stack.push(fn); fn(); window.scrollTo(0, 0); }
+  function go(fn) {
+    stack.push(fn);
+    fn();
+    window.scrollTo(0, 0);
+    try { if (typeof openUI === 'function') openUI(); } catch (e1) {}
+    try { if (typeof window.htForceGmTouch === 'function') window.htForceGmTouch(); } catch (e2) {}
+    setTimeout(function () { try { if (typeof window.htForceGmTouch === 'function') window.htForceGmTouch(); } catch (e3) {} }, 50);
+  }
   function back() {
     if (stack.length > 1) { stack.pop(); stack[stack.length - 1](); }
     else closeUI();
@@ -18576,9 +18626,9 @@ if (tab === 'uso') {
       '<div class="gmApp"><div class="gmTop"><div><h1>Cadastrar aluno</h1><div class="sub">Preencha os dados obrigatórios. Erros serão mostrados aqui.</div></div><button class="gmIcon" id="gmBack">←</button></div>' +
       '<div class="gmPad"><div class="gmCard">' +
       '<div class="gmErrBox" id="studentFormError" role="alert" aria-live="polite"></div>' +
-      '<label class="gmLab">Nome completo *</label><input class="gmIn" id="sName" autocomplete="name" placeholder="Ex.: João da Silva"/>' +
-      '<label class="gmLab">CPF *</label><input class="gmIn" id="sCpf" inputmode="numeric" maxlength="14" placeholder="000.000.000-00"/>' +
-      '<label class="gmLab">E-mail *</label><input class="gmIn" id="sEmail" type="email" autocomplete="email" placeholder="aluno@email.com"/>' +
+      '<label class="gmLab">Nome completo *</label><input class="gmIn" id="sName" name="ht_st_name" autocomplete="off" autocorrect="off" autocapitalize="words" placeholder="Ex.: João da Silva"/>' +
+      '<label class="gmLab">CPF *</label><input class="gmIn" id="sCpf" name="ht_st_cpf" inputmode="numeric" maxlength="14" autocomplete="off" placeholder="000.000.000-00"/>' +
+      '<label class="gmLab">E-mail *</label><input class="gmIn" id="sEmail" name="ht_st_email" type="email" autocomplete="off" placeholder="aluno@email.com"/>' +
       '<label class="gmLab">Telefone</label><input class="gmIn" id="sPhone" inputmode="tel" placeholder="(00) 00000-0000"/>' +
       '<label class="gmLab">Tipo de vínculo *</label><select class="gmSel" id="sAccessType">' +
       '<option value="academy">Aluno da academia</option><option value="totalpass">TotalPass / benefício</option><option value="network">Aluno da rede</option></select>' +
@@ -31720,6 +31770,123 @@ try{ console.log('[HT] Módulo V2 — nav Evolução/Ranking, fotos dentro de Ev
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot,400); });
   else setTimeout(boot,400);
   setInterval(patchShow, 10000);
+})();
+</script>
+
+
+<!-- ===== HT FIX V64 — Master/Unidades: toque não trava ===== -->
+<script id="htFixV64MasterTouch">
+(function(){
+  'use strict';
+
+  var OVERLAYS = [
+    'restOverlay','celebrate','dayCelebrate','monthEndModal',
+    'htShareGumOverlay','htShareCamEvoStyle','htShareCamOverlay',
+    'htEvoCamOverlay','htCamV44','htEvoOnlyCamOverlay',
+    'htCatOverlay','htAccessDesk','htAccessApiPanel','toast'
+  ];
+
+  function gmOpen(){
+    try{
+      var gm = document.getElementById('gmRoot');
+      return !!(gm && (gm.classList.contains('show') || gm.style.display === 'block'));
+    }catch(e){ return false; }
+  }
+
+  function killGhosts(){
+    OVERLAYS.forEach(function(id){
+      try{
+        var el = document.getElementById(id);
+        if(!el) return;
+        // toast pode ficar
+        if(id === 'toast') return;
+        if(el.classList.contains('show')) return; // overlay legítimo aberto
+        el.style.setProperty('pointer-events','none','important');
+        el.style.setProperty('display','none','important');
+        el.style.visibility = 'hidden';
+      }catch(e){}
+    });
+    // qualquer filho fixed fora do gmRoot com z-index alto e sem .show
+    try{
+      document.querySelectorAll('body > div, body > section').forEach(function(el){
+        if(el.id === 'gmRoot') return;
+        if(el.classList && el.classList.contains('show')) return;
+        if(el.classList && el.classList.contains('app')) return;
+        var zi = parseInt(window.getComputedStyle(el).zIndex, 10);
+        if(zi > 1000 && zi < 2147483000){
+          var pe = window.getComputedStyle(el).pointerEvents;
+          var disp = window.getComputedStyle(el).display;
+          if(pe !== 'none' && disp !== 'none' && !el.querySelector('input:focus, textarea:focus')){
+            // provável ghost — só se não for o app principal
+            if(el.id && (el.id.indexOf('ht') === 0 || el.id.indexOf('Overlay') >= 0 || el.className && String(el.className).indexOf('celeb') >= 0)){
+              el.style.setProperty('pointer-events','none','important');
+            }
+          }
+        }
+      });
+    }catch(e){}
+  }
+
+  function forceGmTouch(){
+    try{
+      if(!gmOpen()) return false;
+      document.body.classList.add('ht-gm-open');
+      document.body.style.pointerEvents = 'auto';
+      document.documentElement.style.pointerEvents = 'auto';
+      var gm = document.getElementById('gmRoot');
+      if(!gm) return false;
+      gm.classList.add('show');
+      gm.style.setProperty('display','block','important');
+      gm.style.setProperty('visibility','visible','important');
+      gm.style.setProperty('opacity','1','important');
+      gm.style.setProperty('pointer-events','auto','important');
+      gm.style.setProperty('z-index','2147483000','important');
+      gm.style.setProperty('touch-action','manipulation','important');
+      // garante botões e cards clicáveis
+      gm.querySelectorAll('.gmBtn, .gmIcon, .gmNav button, .gmCard, .gmOpenUnit, a, button, [data-n], [data-id]').forEach(function(el){
+        el.style.pointerEvents = 'auto';
+        el.style.touchAction = 'manipulation';
+      });
+      // esconde bottom nav do treino
+      var bottom = document.getElementById('bottom');
+      if(bottom){
+        bottom.style.setProperty('display','none','important');
+        bottom.style.setProperty('pointer-events','none','important');
+      }
+      killGhosts();
+      return true;
+    }catch(e){ return false; }
+  }
+  window.htForceGmTouch = forceGmTouch;
+
+  function bind(){
+    var gm = document.getElementById('gmRoot');
+    if(!gm) return;
+    if(gm.__htV64Bound) return;
+    gm.__htV64Bound = true;
+    // Qualquer toque/foco no painel restaura eventos (sintoma: só voltava ao focar input)
+    ['touchstart','pointerdown','mousedown','focusin','click'].forEach(function(ev){
+      gm.addEventListener(ev, function(){
+        forceGmTouch();
+      }, true);
+    });
+  }
+
+  function boot(){
+    bind();
+    if(gmOpen()) forceGmTouch();
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot, 300); });
+  else setTimeout(boot, 300);
+  setTimeout(boot, 1200);
+
+  // Watchdog leve só com Master aberto
+  setInterval(function(){
+    try{
+      bind();
+      if(gmOpen()) forceGmTouch();
+    }catch(e){}
+  }, 2000);
 })();
 </script>
 
